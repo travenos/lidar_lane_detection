@@ -1,9 +1,11 @@
 #include "visualizer.h"
+#include "types.h"
 
 #include <iostream>
 #include <fstream>
 #include <vector>
 #include <string_view>
+#include <map>
 
 #if defined(__GNUC__) && __GNUC__ < 8
 #include <experimental/filesystem>
@@ -16,6 +18,18 @@ namespace fs = std::filesystem;
 static_assert (sizeof (float) == 4, "Float doesn't consist of 4 bytes");
 
 constexpr std::size_t POINT_SIZE = 5u;
+
+auto parse_by_channels(const std::vector<float>& pointcloud_data) {
+  std::map<int, std::vector<PlainPointXYZI>> result;
+  for (auto point_iter = pointcloud_data.begin(); point_iter !=  pointcloud_data.end(); point_iter += POINT_SIZE)
+  {
+    const auto channel = static_cast<int>(*(point_iter + 4));
+    const PlainPointXYZI point{*(point_iter + 0), *(point_iter + 1), *(point_iter + 2), *(point_iter + 3)};
+    result[channel].push_back(point);
+  }
+  return result;
+}
+
 
 int main(int argc, char* argv[])
 {
@@ -50,6 +64,11 @@ int main(int argc, char* argv[])
     point_cloud_file.read(reinterpret_cast<char*>(pointcloud_data.data()), file_size);
 
     vis_utils::visualize_cloud(pointcloud_data, POINT_SIZE, point_cloud_path.filename().string());
+
+    const auto channels_map = parse_by_channels(pointcloud_data);
+    for(auto channel_iter = channels_map.rbegin(); channel_iter != channels_map.rend(); ++channel_iter) {
+      vis_utils::visualize_cloud(channel_iter->second, std::to_string(channel_iter->first));
+    }
   }
 
   return 0;
