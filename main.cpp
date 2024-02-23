@@ -1,4 +1,5 @@
 #include "visualizer.h"
+#include "point_extractor.h"
 #include "types.h"
 
 #include <iostream>
@@ -20,7 +21,7 @@ static_assert (sizeof (float) == 4, "Float doesn't consist of 4 bytes");
 constexpr std::size_t POINT_SIZE = 5u;
 
 auto parse_by_channels(const std::vector<float>& pointcloud_data) {
-  std::map<int, std::vector<PlainPointXYZI>> result;
+  PointsMap result;
   for (auto point_iter = pointcloud_data.begin(); point_iter !=  pointcloud_data.end(); point_iter += POINT_SIZE)
   {
     const auto channel = static_cast<int>(*(point_iter + 4));
@@ -66,9 +67,16 @@ int main(int argc, char* argv[])
     vis_utils::visualize_cloud(pointcloud_data, POINT_SIZE, point_cloud_path.filename().string());
 
     const auto channels_map = parse_by_channels(pointcloud_data);
+    std::vector<PointsVector> points_vectors;
+    points_vectors.reserve(channels_map.size());
     for(auto channel_iter = channels_map.rbegin(); channel_iter != channels_map.rend(); ++channel_iter) {
-      vis_utils::visualize_cloud(channel_iter->second, std::to_string(channel_iter->first));
+//      vis_utils::visualize_cloud(channel_iter->second, std::to_string(channel_iter->first));
+      auto outliers = processing_logic::extract_intensity_outliers(channel_iter->second);
+//      vis_utils::visualize_cloud(outliers, std::to_string(channel_iter->first));
+      points_vectors.push_back(std::move(outliers));
     }
+    const auto fused_filtered_points = processing_logic::fuse_points(points_vectors);
+    vis_utils::visualize_cloud(fused_filtered_points, point_cloud_path.filename().string() + "_filtered");
   }
 
   return 0;

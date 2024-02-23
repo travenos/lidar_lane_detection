@@ -11,7 +11,7 @@ else()
   set(CXX_FILESYSTEM_LIBRARIES)
 endif()
 
-add_executable(cpp_lane_detector main.cpp)
+add_executable(cpp_lane_detector main.cpp point_extractor.cpp)
 target_link_libraries(cpp_lane_detector PRIVATE ${CXX_FILESYSTEM_LIBRARIES})
 
 

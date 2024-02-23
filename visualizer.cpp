@@ -51,7 +51,7 @@ void visualize_cloud(const std::vector<float>& pointcloud_data, std::size_t poin
   visualize(cloud, name);
 }
 
-void visualize_cloud(const std::vector<PlainPointXYZI>& pointcloud_data, const std::string& name)
+void visualize_cloud(const PointsVector& pointcloud_data, const std::string& name)
 {
   pcl::PointCloud<pcl::PointXYZI>::Ptr cloud{boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>()};
 
