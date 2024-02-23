@@ -7,7 +7,15 @@
 namespace {
 float square(float val) { return val * val; }
 
+float get_mean_intensity(const PointsVector& points)
+{
+  float sum{0.f};
+  for (const auto& point : points) {
+    sum += point.intensity;
+  }
+  return sum / points.size();
 }
+
 float get_median_intensity(PointsVector points)
 {
   auto m = points.begin() + points.size() / 2;
@@ -18,7 +26,7 @@ float get_median_intensity(PointsVector points)
   return points[points.size() / 2].intensity;
 }
 
-float get_deviation(PointsVector points, float mean)
+float get_deviation(const PointsVector& points, float mean)
 {
   float div{};
   for (const auto& point: points) {
@@ -29,6 +37,7 @@ float get_deviation(PointsVector points, float mean)
     div = std::sqrt(div);
   }
   return div;
+}
 }
 
 namespace processing_logic {

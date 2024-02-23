@@ -1,5 +1,6 @@
 #include "visualizer.h"
 #include "point_extractor.h"
+#include "clustering.h"
 #include "types.h"
 
 #include <iostream>
@@ -69,14 +70,20 @@ int main(int argc, char* argv[])
     const auto channels_map = parse_by_channels(pointcloud_data);
     std::vector<PointsVector> points_vectors;
     points_vectors.reserve(channels_map.size());
+    std::vector<PointsVector> clusters;
     for(auto channel_iter = channels_map.rbegin(); channel_iter != channels_map.rend(); ++channel_iter) {
 //      vis_utils::visualize_cloud(channel_iter->second, std::to_string(channel_iter->first));
       auto outliers = processing_logic::extract_intensity_outliers(channel_iter->second);
 //      vis_utils::visualize_cloud(outliers, std::to_string(channel_iter->first));
+
+      auto new_clusters = processing_logic::cluster(outliers, 0.01f, 2);
+      std::move(new_clusters.begin(), new_clusters.end(), std::back_inserter(clusters));
+
       points_vectors.push_back(std::move(outliers));
     }
-    const auto fused_filtered_points = processing_logic::fuse_points(points_vectors);
-    vis_utils::visualize_cloud(fused_filtered_points, point_cloud_path.filename().string() + "_filtered");
+//    const auto fused_filtered_points = processing_logic::fuse_points(points_vectors);
+//    vis_utils::visualize_cloud(fused_filtered_points, point_cloud_path.filename().string() + "_filtered");
+    vis_utils::visualize_clusters(clusters, point_cloud_path.filename().string() + "_clustered");
   }
 
   return 0;
