@@ -8,13 +8,13 @@ namespace vis_utils {
 
 constexpr double DISTANCE = 75.;
 
-void visualize_cloud(const std::vector<float>& pointcloud_data, std::size_t point_size)
+void visualize_cloud(const std::vector<float>& pointcloud_data, std::size_t point_size, const std::string& name)
 {
   if (point_size < 3) {
     throw std::invalid_argument{"Point size should be at least 3"};
   }
 
-  pcl::visualization::PCLVisualizer viewer{"3D Viewer"};
+  pcl::visualization::PCLVisualizer viewer{name};
   viewer.setBackgroundColor(0, 0, 0);
 
   pcl::PointCloud<pcl::PointXYZI>::Ptr cloud{boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>()};
@@ -38,7 +38,7 @@ void visualize_cloud(const std::vector<float>& pointcloud_data, std::size_t poin
 
   viewer.setCameraPosition(0, 0, DISTANCE, 0, 1, 0);
   viewer.addCoordinateSystem(1.0);
-  viewer.spin();
+  viewer.spin(); // TODO!!! add logic to avoid multiple windows
 }
 
 }

@@ -13,7 +13,7 @@ namespace fs = std::experimental::filesystem;
 namespace fs = std::filesystem;
 #endif
 
-static_assert (sizeof (float) == 4, "Float consists not of 4 bytes");
+static_assert (sizeof (float) == 4, "Float doesn't consist of 4 bytes");
 
 constexpr std::size_t POINT_SIZE = 5u;
 
@@ -23,23 +23,34 @@ int main(int argc, char* argv[])
     std::cerr << "Not enough arguments" << std::endl;
     return 1;
   }
-  std::string_view point_cloud_path = argv[1];
-  const auto file_size = fs::file_size(point_cloud_path);
-  std::fstream point_cloud_file{point_cloud_path.data(), std::ios::in | std::ios::binary};
-  if (file_size % sizeof (float)) {
-    std::cerr << "File can not be interpreted as an array of floats" << std::endl;
+  fs::path data_dir{argv[1]};
+  if (!fs::is_directory(data_dir)) {
+    std::cerr << "Provided path is not a directory" << std::endl;
     return 1;
   }
-  const std::size_t plointcloud_size = file_size / sizeof (float);
-  if (plointcloud_size % POINT_SIZE != 0) {
-    std::cerr << "The point size is not " << POINT_SIZE << std::endl;
-    return 1;
+  for (auto const& point_cloud_dir : fs::directory_iterator{data_dir})
+  {
+    const auto point_cloud_path = point_cloud_dir.path();
+    if (!fs::is_regular_file(point_cloud_path)) {
+      continue;
+    }
+    const auto file_size = fs::file_size(point_cloud_path);
+    std::fstream point_cloud_file{point_cloud_path, std::ios::in | std::ios::binary};
+    if (file_size % sizeof (float)) {
+      std::cerr << point_cloud_path << " can not be interpreted as an array of floats" << std::endl;
+      continue;
+    }
+    const std::size_t plointcloud_size = file_size / sizeof (float);
+    if (plointcloud_size % POINT_SIZE != 0) {
+      std::cerr << point_cloud_path << ": the point size is not " << POINT_SIZE << std::endl;
+      continue;
+    }
+
+    std::vector<float> pointcloud_data(plointcloud_size);
+    point_cloud_file.read(reinterpret_cast<char*>(pointcloud_data.data()), file_size);
+
+    vis_utils::visualize_cloud(pointcloud_data, POINT_SIZE, point_cloud_path.filename().string());
   }
-
-  std::vector<float> pointcloud_data(plointcloud_size);
-  point_cloud_file.read(reinterpret_cast<char*>(pointcloud_data.data()), file_size);
-
-  vis_utils::visualize_cloud(pointcloud_data, POINT_SIZE);
 
   return 0;
 }
