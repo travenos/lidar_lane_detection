@@ -11,8 +11,15 @@ else()
   set(CXX_FILESYSTEM_LIBRARIES)
 endif()
 
-find_package(PCL 1.8 REQUIRED COMPONENTS common io visualization)
-
 add_executable(cpp_lane_detector main.cpp)
-target_include_directories(cpp_lane_detector PRIVATE ${PCL_INCLUDE_DIRS})
-target_link_libraries(cpp_lane_detector PRIVATE ${PCL_LIBRARIES} ${CXX_FILESYSTEM_LIBRARIES})
+target_link_libraries(cpp_lane_detector PRIVATE ${CXX_FILESYSTEM_LIBRARIES})
+
+
+find_package(PCL 1.8 REQUIRED COMPONENTS common visualization)
+
+add_library(visualizer_lib STATIC visualizer.cpp)
+target_include_directories(visualizer_lib PRIVATE ${PCL_INCLUDE_DIRS})
+target_link_libraries(visualizer_lib PUBLIC ${PCL_LIBRARIES})
+
+target_link_libraries(cpp_lane_detector PRIVATE visualizer_lib)
+

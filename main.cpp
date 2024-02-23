@@ -1,6 +1,8 @@
+#include "visualizer.h"
+
 #include <iostream>
 #include <fstream>
-#include <memory>
+#include <vector>
 #include <string_view>
 
 #if defined(__GNUC__) && __GNUC__ < 8
@@ -10,39 +12,6 @@ namespace fs = std::experimental::filesystem;
 #include <filesystem>
 namespace fs = std::filesystem;
 #endif
-
-// TODO!!! PCL
-#include <pcl/visualization/pcl_visualizer.h>
-#include <pcl/point_types.h>
-#include <pcl/point_cloud.h>
-//TODO!!! refactor code style
-enum CameraAngle
-{
-  XY, TopDown, Side, FPS
-};
-static void initCamera(CameraAngle setAngle, pcl::visualization::PCLVisualizer& viewer)
-{
-
-    viewer.setBackgroundColor (0, 0, 0);
-
-    // set camera position and angle
-    viewer.initCameraParameters();
-    // distance away in meters
-    int distance = 16;
-
-    switch(setAngle)
-    {
-        case XY : viewer.setCameraPosition(-distance, -distance, distance, 1, 1, 0); break;
-        case TopDown : viewer.setCameraPosition(0, 0, distance, 1, 0, 1); break;
-        case Side : viewer.setCameraPosition(0, -distance, 0, 0, 0, 1); break;
-        case FPS : viewer.setCameraPosition(-10, 0, 0, 0, 0, 1);
-    }
-
-    if(setAngle!=FPS) {
-        viewer.addCoordinateSystem (1.0);
-    }
-}
-// TODO!!! PCL
 
 static_assert (sizeof (float) == 4, "Float consists not of 4 bytes");
 
@@ -67,29 +36,10 @@ int main(int argc, char* argv[])
     return 1;
   }
 
-  std::unique_ptr<float[]> pointcloud_data{new float[plointcloud_size]};
-  point_cloud_file.read(reinterpret_cast<char*>(pointcloud_data.get()), file_size);
-  // TODO!!! PCL
-  pcl::visualization::PCLVisualizer viewer{"3D Viewer"};
-  initCamera(XY, viewer);
-  pcl::PointCloud<pcl::PointXYZI>::Ptr cloud{boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>()};
+  std::vector<float> pointcloud_data(plointcloud_size);
+  point_cloud_file.read(reinterpret_cast<char*>(pointcloud_data.data()), file_size);
 
-  cloud->reserve(plointcloud_size / POINT_SIZE);
-  const auto* point_ptr = pointcloud_data.get();
-  while (point_ptr < pointcloud_data.get() + plointcloud_size)
-  {
-    pcl::PointXYZI point;
-    point.x = point_ptr[0];
-    point.y = point_ptr[1];
-    point.z = point_ptr[2];
-    point.intensity = std::clamp(point_ptr[3] * 10.f, 0.f, 255.f);
-    cloud->push_back(point);
-    point_ptr += POINT_SIZE;
-  }
-  pcl::visualization::PointCloudColorHandlerGenericField<pcl::PointXYZI> intensity_distribution(cloud,"intensity");
-  viewer.addPointCloud<pcl::PointXYZI>(cloud, intensity_distribution, "Cloud");
+  vis_utils::visualize_cloud(pointcloud_data, POINT_SIZE);
 
-  viewer.spin();
-  // TODO!!! PCL
   return 0;
 }
