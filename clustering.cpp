@@ -6,7 +6,7 @@
 
 namespace processing_logic {
 
-std::vector<PointsVector> cluster(const PointsVector& points, float cluster_tolerance, int min_size)
+std::vector<PointsVector> cluster(const PointsVector& points, float cluster_tolerance, int min_size, int max_size)
 {
   KdTree tree{};
   // May be this part can be improved - add balancing to the filled tree
@@ -42,7 +42,7 @@ std::vector<PointsVector> cluster(const PointsVector& points, float cluster_tole
       std::vector<int> new_cluster_ids;
       proximity_func(static_cast<int>(point_id), new_cluster_ids);
       const int cluster_size{static_cast<int>(new_cluster_ids.size())};
-      if (cluster_size >= min_size)
+      if (cluster_size >= min_size && cluster_size <= max_size)
       {
         auto& new_cluster = clusters.emplace_back();
         new_cluster.reserve(new_cluster_ids.size());

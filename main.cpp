@@ -22,8 +22,9 @@ static_assert (sizeof (float) == 4, "Float doesn't consist of 4 bytes");
 constexpr std::size_t POINT_SIZE = 5u;
 
 // PARAMETERS
-constexpr float DISTANCE_IN_CLUSTER = 0.15f;
+constexpr float DISTANCE_IN_CLUSTER = 0.2f;
 constexpr int MIN_POINTS_PER_CLUSTER = 2;
+constexpr int MAX_POINTS_PER_CLUSTER = 50;
 
 auto parse_by_channels(const std::vector<float>& pointcloud_data) {
   PointsMap result;
@@ -82,14 +83,14 @@ int main(int argc, char* argv[])
       auto outliers = processing_logic::extract_intensity_outliers(channel_iter->second);
 //      visualizer_filtered.visualize_cloud(outliers, std::to_string(channel_iter->first));
 
-      auto new_clusters = processing_logic::cluster(outliers, DISTANCE_IN_CLUSTER, MIN_POINTS_PER_CLUSTER);
+      auto new_clusters = processing_logic::cluster(outliers, DISTANCE_IN_CLUSTER, MIN_POINTS_PER_CLUSTER, MAX_POINTS_PER_CLUSTER);
       std::move(new_clusters.begin(), new_clusters.end(), std::back_inserter(clusters));
 
       points_vectors.push_back(std::move(outliers));
     }
 //    const auto fused_filtered_points = processing_logic::fuse_points(points_vectors);
 //    visualizer_filtered.visualize_cloud(fused_filtered_points, point_cloud_path.filename().string() + "_filtered");
-    visualizer_filtered.visualize_clusters(clusters, point_cloud_path.filename().string() + "_clustered");
+    visualizer_filtered.visualize_clusters(clusters, points_vectors, point_cloud_path.filename().string() + "_clustered");
   }
 
   return 0;

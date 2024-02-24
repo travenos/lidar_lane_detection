@@ -19,7 +19,7 @@ public:
 
   void visualize_cloud(const std::vector<float>& pointcloud_data, std::size_t point_size, const std::string& name);
   void visualize_cloud(const PointsVector& pointcloud_data, const std::string& name);
-  void visualize_clusters(const std::vector<PointsVector>& clusters, const std::string& name);
+  void visualize_clusters(const std::vector<PointsVector>& clusters, const std::vector<PointsVector>& all_points, const std::string& name);
 
 private:
   void init_if_needed_();

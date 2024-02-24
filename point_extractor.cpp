@@ -7,7 +7,7 @@
 namespace {
 
 // PARAMETERS
-constexpr int EXTRACTION_MULTIPLIER = 2;
+constexpr float EXTRACTION_MULTIPLIER = 1.5;
 constexpr float MIN_DIV = 1.;
 constexpr bool USE_MEDIAN = true;
 

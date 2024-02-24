@@ -61,12 +61,12 @@ void visualize(pcl::visualization::PCLVisualizer& viewer,
                const pcl::PointCloud<pcl::PointXYZI>::Ptr& cloud,
                const std::vector<Box>& boxes)
 {
-  static const std::vector<Color> COLORS = {Color{1,0,0}, Color{1,1,0}, Color{0,0,1}};
+  constexpr Color COLOR{1.f, 0.3f, 0.f};
   clear(viewer);
   pcl::visualization::PointCloudColorHandlerGenericField<pcl::PointXYZI> intensity_distribution{cloud, "intensity"};
   viewer.addPointCloud<pcl::PointXYZI>(cloud, intensity_distribution, "Cloud");
   for (std::size_t i{0}; i < boxes.size(); ++i) {
-    render_box(viewer, boxes.at(i), static_cast<int>(i), COLORS[i % COLORS.size()]);
+    render_box(viewer, boxes.at(i), static_cast<int>(i), COLOR);
   }
   viewer.spin();
 }
@@ -159,14 +159,18 @@ void Visualizer::visualize_cloud(const PointsVector& pointcloud_data, const std:
   visualize(*viewer_, cloud);
 }
 
-void Visualizer::visualize_clusters(const std::vector<PointsVector>& clusters, const std::string& name)
+void Visualizer::visualize_clusters(const std::vector<PointsVector>& clusters, const std::vector<PointsVector>& all_points, const std::string& name)
 {
   auto cloud{boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>()};
+  for (const auto& beam: all_points) {
+    const auto new_cloud = convert_to_cloud(beam);
+    *cloud += *new_cloud;
+  }
+
   std::vector<Box> boxes;
   boxes.reserve(clusters.size());
   for (const auto& cluster: clusters) {
     const auto new_cloud = convert_to_cloud(cluster);
-    *cloud += *new_cloud;
     boxes.emplace_back(get_bounding_box(new_cloud));
   }
   init_if_needed_();
