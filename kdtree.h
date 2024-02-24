@@ -1,5 +1,7 @@
 #pragma once
 
+#include "types.h"
+
 #include <vector>
 
 struct Node;
@@ -8,9 +10,9 @@ struct KdTree
 {
   KdTree() = default;
   ~KdTree();
-  void insert(std::vector<float> point, int id);
+  void insert(const PlainPointXYZI& point, int id);
   // return a list of point ids in the tree that are within distance of target
-  std::vector<int> search(const std::vector<float>& target, float distance_tol) const;
+  std::vector<int> search(const PlainPointXYZI& target, float distance_tol) const;
 
 private:
   Node* root_{nullptr};

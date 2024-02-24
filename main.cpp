@@ -21,6 +21,10 @@ static_assert (sizeof (float) == 4, "Float doesn't consist of 4 bytes");
 
 constexpr std::size_t POINT_SIZE = 5u;
 
+// PARAMETERS
+constexpr float DISTANCE_IN_CLUSTER = 0.15f;
+constexpr int MIN_POINTS_PER_CLUSTER = 2;
+
 auto parse_by_channels(const std::vector<float>& pointcloud_data) {
   PointsMap result;
   for (auto point_iter = pointcloud_data.begin(); point_iter !=  pointcloud_data.end(); point_iter += POINT_SIZE)
@@ -76,7 +80,7 @@ int main(int argc, char* argv[])
       auto outliers = processing_logic::extract_intensity_outliers(channel_iter->second);
 //      vis_utils::visualize_cloud(outliers, std::to_string(channel_iter->first));
 
-      auto new_clusters = processing_logic::cluster(outliers, 0.01f, 2);
+      auto new_clusters = processing_logic::cluster(outliers, DISTANCE_IN_CLUSTER, MIN_POINTS_PER_CLUSTER);
       std::move(new_clusters.begin(), new_clusters.end(), std::back_inserter(clusters));
 
       points_vectors.push_back(std::move(outliers));
