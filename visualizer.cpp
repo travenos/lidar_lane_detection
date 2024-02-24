@@ -6,6 +6,9 @@
 #include <pcl/point_cloud.h>
 
 namespace {
+
+constexpr double CAMERA_HEIGHT = 75.;
+
 struct Box
 {
   float x_min;
@@ -27,53 +30,45 @@ void render_box(pcl::visualization::PCLVisualizer& viewer, const Box& box, int i
 {
   std::clamp(opacity, 0.f, 1.f);
 
-  std::string cube = "box"+std::to_string(id);
-  //viewer->addCube(box.bboxTransform, box.bboxQuaternion, box.cube_length, box.cube_width, box.cube_height, cube);
+  std::string cube = "box" + std::to_string(id);
   viewer.addCube(box.x_min, box.x_max, box.y_min, box.y_max, box.z_min, box.z_max, color.r, color.g, color.b, cube);
   viewer.setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_REPRESENTATION, pcl::visualization::PCL_VISUALIZER_REPRESENTATION_WIREFRAME, cube);
   viewer.setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_COLOR, color.r, color.g, color.b, cube);
   viewer.setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_OPACITY, opacity, cube);
 
-  std::string cubeFill = "boxFill"+std::to_string(id);
-  //viewer->addCube(box.bboxTransform, box.bboxQuaternion, box.cube_length, box.cube_width, box.cube_height, cubeFill);
-  viewer.addCube(box.x_min, box.x_max, box.y_min, box.y_max, box.z_min, box.z_max, color.r, color.g, color.b, cubeFill);
-  viewer.setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_REPRESENTATION, pcl::visualization::PCL_VISUALIZER_REPRESENTATION_SURFACE, cubeFill);
-  viewer.setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_COLOR, color.r, color.g, color.b, cubeFill);
-  viewer.setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_OPACITY, opacity*0.3, cubeFill);
+  std::string cube_fill = "boxFill" + std::to_string(id);
+  viewer.addCube(box.x_min, box.x_max, box.y_min, box.y_max, box.z_min, box.z_max, color.r, color.g, color.b, cube_fill);
+  viewer.setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_REPRESENTATION, pcl::visualization::PCL_VISUALIZER_REPRESENTATION_SURFACE, cube_fill);
+  viewer.setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_COLOR, color.r, color.g, color.b, cube_fill);
+  viewer.setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_OPACITY, opacity * 0.3, cube_fill);
 }
 
-void visualize(const pcl::PointCloud<pcl::PointXYZI>::Ptr& cloud, const std::string& name)
+void clear(pcl::visualization::PCLVisualizer& viewer)
 {
-  constexpr double CAMERA_HEIGHT = 75.;
-  pcl::visualization::PCLVisualizer viewer{name};
-  viewer.setBackgroundColor(0, 0, 0);
-  pcl::visualization::PointCloudColorHandlerGenericField<pcl::PointXYZI> intensity_distribution(cloud,"intensity");
-  viewer.addPointCloud<pcl::PointXYZI>(cloud, intensity_distribution, "Cloud");
-
-  viewer.setCameraPosition(0, 0, CAMERA_HEIGHT, 0, 1, 0);
-  viewer.addCoordinateSystem(1.0);
-  viewer.spin(); // TODO!!! add logic to avoid multiple windows
+  viewer.removeAllPointClouds();
+  viewer.removeAllShapes();
 }
 
-void visualize(const std::vector<pcl::PointCloud<pcl::PointXYZI>::Ptr>& clouds,
-const std::vector<Box>& boxes, const std::string& name)
+void visualize(pcl::visualization::PCLVisualizer& viewer, const pcl::PointCloud<pcl::PointXYZI>::Ptr& cloud)
+{
+  clear(viewer);
+  pcl::visualization::PointCloudColorHandlerGenericField<pcl::PointXYZI> intensity_distribution{cloud, "intensity"};
+  viewer.addPointCloud<pcl::PointXYZI>(cloud, intensity_distribution, "Cloud");
+  viewer.spin();
+}
+
+void visualize(pcl::visualization::PCLVisualizer& viewer,
+               const pcl::PointCloud<pcl::PointXYZI>::Ptr& cloud,
+               const std::vector<Box>& boxes)
 {
   static const std::vector<Color> COLORS = {Color{1,0,0}, Color{1,1,0}, Color{0,0,1}};
-  constexpr double CAMERA_HEIGHT = 75.;
-  pcl::visualization::PCLVisualizer viewer{name};
-  viewer.setBackgroundColor(0, 0, 0);
-  int i{0};
-  for (const auto& cloud: clouds) {
-    pcl::visualization::PointCloudColorHandlerGenericField<pcl::PointXYZI> intensity_distribution(cloud, "intensity");
-    viewer.addPointCloud<pcl::PointXYZI>(cloud, intensity_distribution, "cluster" + std::to_string(i++));
-  }
+  clear(viewer);
+  pcl::visualization::PointCloudColorHandlerGenericField<pcl::PointXYZI> intensity_distribution{cloud, "intensity"};
+  viewer.addPointCloud<pcl::PointXYZI>(cloud, intensity_distribution, "Cloud");
   for (std::size_t i{0}; i < boxes.size(); ++i) {
     render_box(viewer, boxes.at(i), static_cast<int>(i), COLORS[i % COLORS.size()]);
   }
-
-  viewer.setCameraPosition(0, 0, CAMERA_HEIGHT, 0, 1, 0);
-  viewer.addCoordinateSystem(1.0);
-  viewer.spin(); // TODO!!! add logic to avoid multiple windows
+  viewer.spin();
 }
 
 float process_intensity(float original_intensity)
@@ -110,7 +105,7 @@ pcl::PointXYZI convert_to_pcl(const PlainPointXYZI& input_point)
 
 pcl::PointCloud<pcl::PointXYZI>::Ptr convert_to_cloud(const PointsVector& pointcloud_data)
 {
-  pcl::PointCloud<pcl::PointXYZI>::Ptr cloud{boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>()};
+  auto cloud{boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>()};
 
   cloud->reserve(pointcloud_data.size());
   for (auto point_iter = pointcloud_data.begin(); point_iter != pointcloud_data.end(); ++point_iter) {
@@ -123,13 +118,20 @@ pcl::PointCloud<pcl::PointXYZI>::Ptr convert_to_cloud(const PointsVector& pointc
 
 namespace vis_utils {
 
-void visualize_cloud(const std::vector<float>& pointcloud_data, std::size_t point_size, const std::string& name)
+Visualizer::Visualizer()
+  : viewer_{std::make_unique<pcl::visualization::PCLVisualizer>("", false)}
+{
+}
+
+Visualizer::~Visualizer() = default;
+
+void Visualizer::visualize_cloud(const std::vector<float>& pointcloud_data, std::size_t point_size, const std::string& name)
 {
   if (point_size < 3) {
     throw std::invalid_argument{"Point size should be at least 3"};
   }
 
-  pcl::PointCloud<pcl::PointXYZI>::Ptr cloud{boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>()};
+  auto cloud{boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>()};
 
   cloud->reserve(pointcloud_data.size() / point_size);
   for (auto point_iter = pointcloud_data.begin(); point_iter != pointcloud_data.end(); point_iter += point_size) {
@@ -144,27 +146,43 @@ void visualize_cloud(const std::vector<float>& pointcloud_data, std::size_t poin
     }
     cloud->push_back(point);
   }
-  visualize(cloud, name);
+  init_if_needed_();
+  viewer_->setWindowName(name);
+  visualize(*viewer_, cloud);
 }
 
-void visualize_cloud(const PointsVector& pointcloud_data, const std::string& name)
+void Visualizer::visualize_cloud(const PointsVector& pointcloud_data, const std::string& name)
 {
   auto cloud = convert_to_cloud(pointcloud_data);
-  visualize(cloud, name);
+  init_if_needed_();
+  viewer_->setWindowName(name);
+  visualize(*viewer_, cloud);
 }
 
-void visualize_clusters(const std::vector<PointsVector>& clusters, const std::string& name)
+void Visualizer::visualize_clusters(const std::vector<PointsVector>& clusters, const std::string& name)
 {
-  std::vector<pcl::PointCloud<pcl::PointXYZI>::Ptr> clouds;
+  auto cloud{boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>()};
   std::vector<Box> boxes;
-
-  clouds.reserve(clusters.size());
   boxes.reserve(clusters.size());
   for (const auto& cluster: clusters) {
-    clouds.emplace_back(convert_to_cloud(cluster));
-    boxes.emplace_back(get_bounding_box(clouds.back()));
+    const auto new_cloud = convert_to_cloud(cluster);
+    *cloud += *new_cloud;
+    boxes.emplace_back(get_bounding_box(new_cloud));
   }
-  visualize(clouds, boxes, name);
+  init_if_needed_();
+  viewer_->setWindowName(name);
+  visualize(*viewer_, cloud, boxes);
+}
+
+void Visualizer::init_if_needed_()
+{
+  if (!viewer_initialized_) {
+    viewer_->createInteractor();
+    viewer_->setBackgroundColor(0, 0, 0);
+    viewer_->setCameraPosition(0, 0, CAMERA_HEIGHT, 0, 1, 0);
+    viewer_->addCoordinateSystem(1.0);
+    viewer_initialized_ = true;
+  }
 }
 
 }

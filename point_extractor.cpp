@@ -5,6 +5,12 @@
 #include <numeric>
 
 namespace {
+
+// PARAMETERS
+constexpr int EXTRACTION_MULTIPLIER = 2;
+constexpr float MIN_DIV = 1.;
+constexpr bool USE_MEDIAN = true;
+
 float square(float val) { return val * val; }
 
 float get_mean_intensity(const PointsVector& points)
@@ -44,13 +50,11 @@ namespace processing_logic {
 
 PointsVector extract_intensity_outliers(const PointsVector& points)
 {
-  constexpr int EXTRACTION_MULTIPLIER = 2;
-  constexpr float MIN_DIV = 1.;
   PointsVector filtered;
-  const auto median = get_median_intensity(points);
-  const auto deviation = std::max(get_deviation(points, median), MIN_DIV);
+  const auto mean = USE_MEDIAN ? get_median_intensity(points) : get_mean_intensity(points);
+  const auto deviation = std::max(get_deviation(points, mean), MIN_DIV);
   for (const auto& point : points) {
-    if (point.intensity - median > EXTRACTION_MULTIPLIER * deviation) {
+    if (point.intensity - mean > EXTRACTION_MULTIPLIER * deviation) {
       filtered.push_back(point);
     }
   }

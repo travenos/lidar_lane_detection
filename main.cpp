@@ -48,6 +48,8 @@ int main(int argc, char* argv[])
     std::cerr << "Provided path is not a directory" << std::endl;
     return 1;
   }
+  vis_utils::Visualizer visualizer_main;
+  vis_utils::Visualizer visualizer_filtered;
   for (auto const& point_cloud_dir : fs::directory_iterator{data_dir})
   {
     const auto point_cloud_path = point_cloud_dir.path();
@@ -69,16 +71,16 @@ int main(int argc, char* argv[])
     std::vector<float> pointcloud_data(plointcloud_size);
     point_cloud_file.read(reinterpret_cast<char*>(pointcloud_data.data()), file_size);
 
-    vis_utils::visualize_cloud(pointcloud_data, POINT_SIZE, point_cloud_path.filename().string());
+    visualizer_main.visualize_cloud(pointcloud_data, POINT_SIZE, point_cloud_path.filename().string());
 
     const auto channels_map = parse_by_channels(pointcloud_data);
     std::vector<PointsVector> points_vectors;
     points_vectors.reserve(channels_map.size());
     std::vector<PointsVector> clusters;
     for(auto channel_iter = channels_map.rbegin(); channel_iter != channels_map.rend(); ++channel_iter) {
-//      vis_utils::visualize_cloud(channel_iter->second, std::to_string(channel_iter->first));
+//      visualizer_filtered.visualize_cloud(channel_iter->second, std::to_string(channel_iter->first));
       auto outliers = processing_logic::extract_intensity_outliers(channel_iter->second);
-//      vis_utils::visualize_cloud(outliers, std::to_string(channel_iter->first));
+//      visualizer_filtered.visualize_cloud(outliers, std::to_string(channel_iter->first));
 
       auto new_clusters = processing_logic::cluster(outliers, DISTANCE_IN_CLUSTER, MIN_POINTS_PER_CLUSTER);
       std::move(new_clusters.begin(), new_clusters.end(), std::back_inserter(clusters));
@@ -86,8 +88,8 @@ int main(int argc, char* argv[])
       points_vectors.push_back(std::move(outliers));
     }
 //    const auto fused_filtered_points = processing_logic::fuse_points(points_vectors);
-//    vis_utils::visualize_cloud(fused_filtered_points, point_cloud_path.filename().string() + "_filtered");
-    vis_utils::visualize_clusters(clusters, point_cloud_path.filename().string() + "_clustered");
+//    visualizer_filtered.visualize_cloud(fused_filtered_points, point_cloud_path.filename().string() + "_filtered");
+    visualizer_filtered.visualize_clusters(clusters, point_cloud_path.filename().string() + "_clustered");
   }
 
   return 0;
