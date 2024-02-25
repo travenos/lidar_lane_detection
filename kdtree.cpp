@@ -51,13 +51,13 @@ void insert(const PointCoords& point, int id, std::size_t k, Node*& node)
 
 bool is_fitting_tolerance(const PointCoords& target, const PointCoords& other_node, float distance_tol)
 {
-  bool is_near{false};
+  bool is_near{true};
   bool diff_not_zeros{false};
   PointCoords diffs{};
   for (std::size_t i{0}; i < diffs.size(); ++i)
   {
     diffs[i] = std::fabs(target[i] - other_node[i]);
-    is_near |= (diffs[i] <= distance_tol);
+    is_near &= (diffs[i] <= distance_tol);
     diff_not_zeros |= (diffs[i] > 0.f);
   }
   if (!diff_not_zeros) {  // Filter duplicated points
