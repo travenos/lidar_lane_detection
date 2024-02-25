@@ -12,16 +12,16 @@
 
 namespace {
 
-constexpr int RANDOM_SEED = 42;
-constexpr int POINTS_PER_SEGMENT = 2;
-constexpr int POLYNOMIAL_ORDER = 3;
+constexpr int RANDOM_SEED = 43;
+constexpr int POINTS_PER_SEGMENT = 1;
 
-constexpr float MAX_WEIGHT_PART = 0.15f;
+constexpr float NEAR_Y_DIST = 0.3f;
+constexpr float MAX_WEIGHT_PART = 0.25f;
 constexpr float MAX_WEIGHT = 1.f;
-constexpr float MIN_WEIGHT = 0.3f;
-constexpr int RANSAC_ITERATIONS = 10000;
-constexpr double GEOMETRIC_DISTRIBUTION_PARAM = 0.04;
-constexpr std::size_t BEST_POLYNOMIALS_PER_PART_NUMBER = 10u;
+constexpr float MIN_WEIGHT = 0.1f;
+constexpr int RANSAC_ITERATIONS = 1000;
+constexpr double GEOMETRIC_DISTRIBUTION_PARAM = 0.05;
+constexpr std::size_t BEST_POLYNOMIALS_PER_PART_NUMBER = 2u;
 
 // Assume, that z-coordinate is 0
 using Cluster = std::vector<Eigen::Vector2f>;
@@ -94,7 +94,7 @@ std::size_t calculate_not_empty_beams(const MetaCluster& beams)
   return result;
 }
 
-WeightedPolynomialsVector select_results(const std::array<std::map<float, Eigen::Vector4f>, 2>& polynomials_map) {
+WeightedPolynomialsVector select_results(const std::array<std::map<float, Eigen::Vector2f>, 2>& polynomials_map) {
   WeightedPolynomialsVector result;
   result.reserve(BEST_POLYNOMIALS_PER_PART_NUMBER * 2);
   for (const auto& road_part : polynomials_map) {
@@ -106,10 +106,10 @@ WeightedPolynomialsVector select_results(const std::array<std::map<float, Eigen:
 
     for (const auto& polynomial : road_part) {
       WeightedPolynomial result_entry;
-      result_entry.coef0 = polynomial.second(0);
-      result_entry.coef1 = polynomial.second(1);
-      result_entry.coef2 = polynomial.second(2);
-      result_entry.coef3 = polynomial.second(3);
+      result_entry.coef0 = 0.f;
+      result_entry.coef1 = 0.f;
+      result_entry.coef2 = polynomial.second(0);
+      result_entry.coef3 = polynomial.second(1);
       result_entry.weight = min_loss / polynomial.first;
 
       result.push_back(result_entry);
@@ -124,22 +124,17 @@ WeightedPolynomialsVector select_results(const std::array<std::map<float, Eigen:
 
 namespace ransac {
 
-Eigen::Vector4f create_polynomial(const std::array<Eigen::Vector2f, POLYNOMIAL_ORDER + 1>& points)
+Eigen::Vector2f create_polynomial(const std::pair<Eigen::Vector2f, Eigen::Vector2f>& points)
 {
-  Eigen::Matrix4f A;
-  Eigen::Vector4f b;
-  for (int i{0}; i < A.rows(); ++i) {
-    const auto x = points[static_cast<std::size_t>(i)].x();
-    A(i, 1) = square(x);
-    A(i, 0) = A(i, 1) * x; // x^3 = x^2 * x
-    A(i, 2) = x;
-    A(i, 3) = 1.;
-  }
-  for (int i{0}; i < b.rows(); ++i) {
-    const auto y = points[static_cast<std::size_t>(i)].y();
-    b(i) = y;
-  }
-  Eigen::Vector4f polynomial = A.lu().solve(b);
+  Eigen::Matrix2f A;
+  Eigen::Vector2f b;
+  A(0, 0) = points.first.x();
+  A(0, 1) = 1.;
+  A(1, 0) = points.second.x();
+  A(1, 1) = 1.;
+  b(0) = points.first.y();
+  b(1) = points.second.y();
+  Eigen::Vector2f polynomial = A.lu().solve(b);
   return polynomial;
 }
 
@@ -154,16 +149,15 @@ float get_weight(std::size_t beam_id, std::size_t beams_number)
   }
 }
 
-float calculate_y_by_polynomial(const Eigen::Vector4f& polynomial, float x)
+float calculate_y_by_polynomial(const Eigen::Vector2f& polynomial, float x)
 {
-  const float x_square = square(x);
-  return polynomial(0) * x_square * x + polynomial(1) * x_square + polynomial(2) * x + polynomial(3);
+  return polynomial(0) * x + polynomial(1);
 }
 
-float evaluate_polynomial(const Eigen::Vector4f& polynomial,
+float evaluate_polynomial(const Eigen::Vector2f& polynomial,
                           const MetaCluster& left_cluster, const MetaCluster& right_cluster)
 {
-  float loss{0.};
+  float points{0.};
   for (const auto* cluster : {&left_cluster, &right_cluster}) {
     for (std::size_t beam_id{0u}; beam_id < cluster->size(); ++beam_id) {
       if (cluster->at(beam_id).empty()) {
@@ -179,10 +173,10 @@ float evaluate_polynomial(const Eigen::Vector4f& polynomial,
       }
       assert(!std::isinf(min_y_diff));
 
-      loss += square(min_y_diff) * get_weight(beam_id, cluster->size());
+      points += (min_y_diff < NEAR_Y_DIST) * get_weight(beam_id, cluster->size());
     }
   }
-  return loss;
+  return -points;
 }
 
 auto perform_ransac(const std::array<MetaCluster, Segments::Count>& segmented_clusters)
@@ -193,48 +187,45 @@ auto perform_ransac(const std::array<MetaCluster, Segments::Count>& segmented_cl
   const std::array<std::array<std::size_t, 2>, 2> segment_ids
       = {{{{Segments::UpLeft, Segments::UpRight}}, {{Segments::DownLeft, Segments::DownRight}}}};
   // Fist iteration is up, the second one is down
-  std::array<std::map<float, Eigen::Vector4f>, 2> result; // TODO!!! think about other data structure
+  std::array<std::map<float, Eigen::Vector2f>, 2> result; // TODO!!! think about other data structure
   for (std::size_t part_id{0}; part_id < segment_ids.size(); ++part_id) {
     // Select two random beams from each segment. Select random cluster from each beam
     // Select beams
     for (int iter_counter{}; iter_counter < RANSAC_ITERATIONS; ++iter_counter)
     {
-      std::set<std::size_t> left_beams_ids{};
-      std::set<std::size_t> right_beams_ids{};
-      while (left_beams_ids.size() < POINTS_PER_SEGMENT) {
+      std::optional<std::size_t> left_beam_id{};
+      std::optional<std::size_t> right_beam_id{};
+      while (!left_beam_id.has_value()) {
         auto beam_id = static_cast<std::size_t>(std::round(segment_distrib(gen)));
         const auto segment_id = segment_ids[part_id][0];
         if (beam_id < segmented_clusters[segment_id].size()
             && !segmented_clusters[segment_id].at(beam_id).empty()) {
-          left_beams_ids.emplace(beam_id);
+          left_beam_id.emplace(beam_id);
         }
       }
-      while (right_beams_ids.size() < POINTS_PER_SEGMENT) {
+      while (!right_beam_id.has_value()) {
         auto beam_id = static_cast<std::size_t>(std::round(segment_distrib(gen)));
         const auto segment_id = segment_ids[part_id][1];
         if (beam_id < segmented_clusters[segment_id].size()
             && !segmented_clusters[segment_id].at(beam_id).empty()) {
-          right_beams_ids.emplace(beam_id);
+          right_beam_id.emplace(beam_id);
         }
       }
       // Select clusters per each beam
-      std::array<Eigen::Vector2f, POLYNOMIAL_ORDER + 1> selected_points;
-      std::size_t points_selected{0};
-      for (const std::size_t beam_id : left_beams_ids) {
+      std::pair<Eigen::Vector2f, Eigen::Vector2f> selected_points;
+      {
         const auto segment_id = segment_ids[part_id][0];
         std::uniform_int_distribution<std::size_t>
-            point_distrib{0, segmented_clusters[segment_id].at(beam_id).size() - 1};
+            point_distrib{0, segmented_clusters[segment_id].at(left_beam_id.value()).size() - 1};
         const std::size_t point_id = point_distrib(gen);
-        selected_points.at(points_selected) = segmented_clusters[segment_id].at(beam_id).at(point_id);
-        ++points_selected;
+        selected_points.first = segmented_clusters[segment_id].at(left_beam_id.value()).at(point_id);
       }
-      for (const std::size_t beam_id : right_beams_ids) {
+      {
         const auto segment_id = segment_ids[part_id][1];
         std::uniform_int_distribution<std::size_t>
-            point_distrib{0, segmented_clusters[segment_id].at(beam_id).size() - 1};
+            point_distrib{0, segmented_clusters[segment_id].at(right_beam_id.value()).size() - 1};
         const std::size_t point_id = point_distrib(gen);
-        selected_points.at(points_selected) = segmented_clusters[segment_id].at(beam_id).at(point_id);
-        ++points_selected;
+        selected_points.second = segmented_clusters[segment_id].at(right_beam_id.value()).at(point_id);
       }
 
       // Create polynomial by selected points
