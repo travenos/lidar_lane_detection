@@ -11,8 +11,26 @@ else()
   set(CXX_FILESYSTEM_LIBRARIES)
 endif()
 
-add_executable(cpp_lane_detector main.cpp point_extractor.cpp kdtree.cpp clustering.cpp)
-target_link_libraries(cpp_lane_detector PRIVATE ${CXX_FILESYSTEM_LIBRARIES})
+find_package(Eigen3 REQUIRED)
+
+add_executable(cpp_lane_detector
+    main.cpp
+    point_extractor.cpp
+    kdtree.cpp
+    clustering.cpp
+    polynomial_creator.cpp
+)
+target_link_libraries(cpp_lane_detector PRIVATE Eigen3::Eigen ${CXX_FILESYSTEM_LIBRARIES})
+
+# This part suppresses duplicated branches warning in Eigen library.
+if(CMAKE_CXX_COMPILER_ID STREQUAL GNU
+   AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 8.0
+)
+  target_compile_options(
+    cpp_lane_detector
+    PUBLIC "-Wno-duplicated-branches"
+  )
+endif()
 
 
 find_package(PCL 1.8 REQUIRED COMPONENTS common visualization)

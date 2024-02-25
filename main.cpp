@@ -1,6 +1,7 @@
 #include "visualizer.h"
 #include "point_extractor.h"
 #include "clustering.h"
+#include "polynomial_creator.h"
 #include "types.h"
 
 #include <iostream>
@@ -78,19 +79,24 @@ int main(int argc, char* argv[])
     std::vector<PointsVector> points_vectors;
     points_vectors.reserve(channels_map.size());
     std::vector<PointsVector> clusters;
+    ChanneledClusteredPointClouds channelled_clouds;
     for(auto channel_iter = channels_map.rbegin(); channel_iter != channels_map.rend(); ++channel_iter) {
 //      visualizer_filtered.visualize_cloud(channel_iter->second, std::to_string(channel_iter->first));
       auto outliers = processing_logic::extract_intensity_outliers(channel_iter->second);
 //      visualizer_filtered.visualize_cloud(outliers, std::to_string(channel_iter->first));
 
       auto new_clusters = processing_logic::cluster(outliers, DISTANCE_IN_CLUSTER, MIN_POINTS_PER_CLUSTER, MAX_POINTS_PER_CLUSTER);
-      std::move(new_clusters.begin(), new_clusters.end(), std::back_inserter(clusters));
+      std::copy(new_clusters.begin(), new_clusters.end(), std::back_inserter(clusters));
+
+      auto& new_beam = channelled_clouds.emplace_back();
+      new_beam = std::move(new_clusters);
 
       points_vectors.push_back(std::move(outliers));
     }
 //    const auto fused_filtered_points = processing_logic::fuse_points(points_vectors);
 //    visualizer_filtered.visualize_cloud(fused_filtered_points, point_cloud_path.filename().string() + "_filtered");
-    visualizer_filtered.visualize_clusters(clusters, points_vectors, point_cloud_path.filename().string() + "_clustered");
+    const auto polynomials = processing_logic::find_lines(channelled_clouds);
+    visualizer_filtered.visualize_clusters(clusters, points_vectors, polynomials, point_cloud_path.filename().string() + "_clustered");
   }
 
   return 0;

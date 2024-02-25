@@ -14,8 +14,9 @@ struct PlainPointXYZI
 using PointsVector = std::vector<PlainPointXYZI>;
 using PointsMap = std::map<int, PointsVector>;
 using ClusteredPointClouds = std::vector<PointsVector>;
+using ChanneledClusteredPointClouds = std::vector<ClusteredPointClouds>;
 
-struct Polynom
+struct Polynomial
 {
   float coef0{};
   float coef1{};
@@ -23,9 +24,9 @@ struct Polynom
   float coef3{};
 };
 
-struct WeightedPolynom: Polynom
+struct WeightedPolynomial: Polynomial
 {
   float weight{};
 };
 
-using WeightedPolynomsVector = std::vector<WeightedPolynom>;
+using WeightedPolynomialsVector = std::vector<WeightedPolynomial>;
