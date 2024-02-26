@@ -7,11 +7,12 @@
 namespace {
 
 // PARAMETERS
-constexpr float EXTRACTION_MULTIPLIER = 1.5;
-constexpr float MIN_DIV = 1.;
-constexpr bool USE_MEDIAN = true;
+constexpr float EXTRACTION_MULTIPLIER = 1.5f;
+constexpr float MIN_DIV = 1.f;
+constexpr float ROI_RADIUS = 55.f;
+constexpr float HEIGHT_TOLERANCE = 1.5f;
 
-float square(float val) { return val * val; }
+constexpr bool USE_MEDIAN = true;
 
 float get_mean_intensity(const PointsVector& points)
 {
@@ -32,6 +33,25 @@ float get_median_intensity(PointsVector points)
   return points[points.size() / 2].intensity;
 }
 
+//float get_mean_height(const PointsVector& points)
+//{
+//  float sum{0.f};
+//  for (const auto& point : points) {
+//    sum += point.z;
+//  }
+//  return sum / points.size();
+//}
+
+float get_median_height(PointsVector points)
+{
+  auto m = points.begin() + points.size() / 2;
+  std::nth_element(points.begin(), m, points.end(),
+                   [](const auto& first, const auto& second)
+                    { return first.z < second.z; }
+  );
+  return points[points.size() / 2].z;
+}
+
 float get_deviation(const PointsVector& points, float mean)
 {
   float div{};
@@ -44,6 +64,25 @@ float get_deviation(const PointsVector& points, float mean)
   }
   return div;
 }
+
+PlainPointXYZI get_mass_center(const PointsVector& points)
+{
+  PlainPointXYZI result{};
+  for (const auto& point : points) {
+    result.x += point.x;
+    result.y += point.y;
+    result.z += point.z;
+    result.intensity += point.intensity;
+  }
+  if (!points.empty()) {
+    result.x /= static_cast<float>(points.size());
+    result.y /= static_cast<float>(points.size());
+    result.z /= static_cast<float>(points.size());
+    result.intensity /= static_cast<float>(points.size());
+  }
+  return result;
+}
+
 }
 
 namespace processing_logic {
@@ -72,6 +111,33 @@ PointsVector fuse_points(const std::vector<PointsVector>& points_vectors)
     std::copy(points_vector.begin(), points_vector.end(), std::back_inserter(fused));
   }
   return fused;
+}
+
+PointsVector prepare_cloud_for_pca(const ChanneledClusteredPointClouds& clouds)
+{
+  constexpr float ROI_RADIUS_SQUARED = square(ROI_RADIUS);
+  PointsVector clustered_cloud;
+
+  // Replace points by cluster centers and filter by ROI
+  for (const auto& beam: clouds) {
+    for (const auto& cluster : beam) {
+      const auto mass_center = get_mass_center(cluster);
+      if (square(mass_center.x) + square(mass_center.y) < ROI_RADIUS_SQUARED) {
+        clustered_cloud.push_back(mass_center);
+      }
+    }
+  }
+
+  // Filter by height
+  PointsVector result_cloud;
+  result_cloud.reserve(clustered_cloud.size());
+  const float median_height = get_median_height(clustered_cloud);
+  for (const auto& point : clustered_cloud) {
+    if (std::fabs(point.z - median_height) < HEIGHT_TOLERANCE) {
+      result_cloud.push_back(point);
+    }
+  }
+  return result_cloud;
 }
 
 }

@@ -16,7 +16,7 @@ constexpr int RANDOM_SEED = 43;
 constexpr int POINTS_PER_SEGMENT = 1;
 
 constexpr float NEAR_Y_DIST = 0.3f;
-constexpr float MAX_WEIGHT_PART = 0.25f;
+constexpr float MAX_WEIGHT_PART = 0.1f;
 constexpr float MAX_WEIGHT = 1.f;
 constexpr float MIN_WEIGHT = 0.1f;
 constexpr int RANSAC_ITERATIONS = 1000;
@@ -32,11 +32,6 @@ struct Segments {
     UpRight, UpLeft, DownLeft, DownRight, Count
   };
 };
-
-constexpr auto square(float value)
-{
-  return value * value;
-}
 
 Eigen::Vector2f get_mass_center(const PointsVector& points)
 {
@@ -96,7 +91,8 @@ std::size_t calculate_not_empty_beams(const MetaCluster& beams)
 
 WeightedPolynomialsVector select_results(const std::array<std::map<float, Eigen::Vector2f>, 2>& polynomials_map) {
   WeightedPolynomialsVector result;
-  result.reserve(BEST_POLYNOMIALS_PER_PART_NUMBER * 2);
+  std::map<float, bool> lines{{{2, false}, {-2, false}}};
+  result.reserve(lines.size());
   for (const auto& road_part : polynomials_map) {
     std::size_t counter{0u};
     float min_loss{1.f};
@@ -105,17 +101,28 @@ WeightedPolynomialsVector select_results(const std::array<std::map<float, Eigen:
     }
 
     for (const auto& polynomial : road_part) {
-      WeightedPolynomial result_entry;
-      result_entry.coef0 = 0.f;
-      result_entry.coef1 = 0.f;
-      result_entry.coef2 = polynomial.second(0);
-      result_entry.coef3 = polynomial.second(1);
-      result_entry.weight = min_loss / polynomial.first;
+      float b = polynomial.second(1);
+      bool line_is_needed{false};
+      for (auto& line: lines) {
+        if (!line.second && std::fabs(line.first - b) < 1.) {
+          line_is_needed = true;
+          line.second = true;
+          break;
+        }
+      }
+      if (line_is_needed) {
+        WeightedPolynomial result_entry;
+        result_entry.coef0 = 0.f;
+        result_entry.coef1 = 0.f;
+        result_entry.coef2 = polynomial.second(0);
+        result_entry.coef3 = polynomial.second(1);
+        result_entry.weight = min_loss / polynomial.first;
 
-      result.push_back(result_entry);
-      ++counter;
-      if (counter >= BEST_POLYNOMIALS_PER_PART_NUMBER) {
-        break;
+        result.push_back(result_entry);
+        ++counter;
+        if (counter >= lines.size()) {
+          break;
+        }
       }
     }
   }
@@ -142,6 +149,7 @@ float get_weight(std::size_t beam_id, std::size_t beams_number)
 {
   const auto part = static_cast<float>(beam_id) / static_cast<float>(beams_number);
   if (part > MAX_WEIGHT_PART) {
+    return 0.f;
     const auto position = (part - MAX_WEIGHT_PART) / (1.f - MAX_WEIGHT_PART);
     return MAX_WEIGHT * (1.f - position) + MIN_WEIGHT * position;
   } else {
@@ -157,7 +165,9 @@ float calculate_y_by_polynomial(const Eigen::Vector2f& polynomial, float x)
 float evaluate_polynomial(const Eigen::Vector2f& polynomial,
                           const MetaCluster& left_cluster, const MetaCluster& right_cluster)
 {
-  float points{0.};
+  float angle = std::atan(polynomial(0));
+  std::array<float,2> points{{0., 0.}};
+  std::size_t i{0u};
   for (const auto* cluster : {&left_cluster, &right_cluster}) {
     for (std::size_t beam_id{0u}; beam_id < cluster->size(); ++beam_id) {
       if (cluster->at(beam_id).empty()) {
@@ -173,10 +183,12 @@ float evaluate_polynomial(const Eigen::Vector2f& polynomial,
       }
       assert(!std::isinf(min_y_diff));
 
-      points += (min_y_diff < NEAR_Y_DIST) * get_weight(beam_id, cluster->size());
+      points[i] += (min_y_diff < NEAR_Y_DIST) * get_weight(beam_id, cluster->size());
     }
+    ++i;
   }
-  return -points;
+  //return -(points[0] + points[1] - std::fabs(points[0] - points[1]) - std::fabs(angle) * 50);
+  return -(points[0] + points[1]);
 }
 
 auto perform_ransac(const std::array<MetaCluster, Segments::Count>& segmented_clusters)

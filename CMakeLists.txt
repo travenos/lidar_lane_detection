@@ -19,6 +19,7 @@ add_executable(cpp_lane_detector
     kdtree.cpp
     clustering.cpp
     polynomial_creator.cpp
+    main_direction_getter.cpp
 )
 target_link_libraries(cpp_lane_detector PRIVATE Eigen3::Eigen ${CXX_FILESYSTEM_LIBRARIES})
 

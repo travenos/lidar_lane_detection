@@ -2,6 +2,7 @@
 #include "point_extractor.h"
 #include "clustering.h"
 #include "polynomial_creator.h"
+#include "main_direction_getter.h"
 #include "types.h"
 
 #include <iostream>
@@ -23,9 +24,12 @@ static_assert (sizeof (float) == 4, "Float doesn't consist of 4 bytes");
 constexpr std::size_t POINT_SIZE = 5u;
 
 // PARAMETERS
-constexpr float DISTANCE_IN_CLUSTER = 0.2f;
-constexpr int MIN_POINTS_PER_CLUSTER = 2;
-constexpr int MAX_POINTS_PER_CLUSTER = 50;
+constexpr float DISTANCE_IN_CLUSTER1 = 0.2f;
+constexpr int MIN_POINTS_PER_CLUSTER1 = 1;
+constexpr int MAX_POINTS_PER_CLUSTER1 = 10;
+constexpr float DISTANCE_IN_CLUSTER2 = 0.3f;
+constexpr int MIN_POINTS_PER_CLUSTER2 = 1;
+constexpr int MAX_POINTS_PER_CLUSTER2 = 50;
 
 auto parse_by_channels(const std::vector<float>& pointcloud_data) {
   PointsMap result;
@@ -51,6 +55,7 @@ int main(int argc, char* argv[])
     return 1;
   }
   vis_utils::Visualizer visualizer_main;
+  vis_utils::Visualizer visualizer_preprocessed_for_pca;
   vis_utils::Visualizer visualizer_filtered;
   for (auto const& point_cloud_dir : fs::directory_iterator{data_dir})
   {
@@ -73,6 +78,14 @@ int main(int argc, char* argv[])
     std::vector<float> pointcloud_data(plointcloud_size);
     point_cloud_file.read(reinterpret_cast<char*>(pointcloud_data.data()), file_size);
 
+    PointsVector all_points{};
+    all_points.reserve(plointcloud_size / POINT_SIZE);
+    for (auto point_iter = pointcloud_data.begin(); point_iter !=  pointcloud_data.end(); point_iter += POINT_SIZE)
+    {
+      const PlainPointXYZI point{*(point_iter + 0), *(point_iter + 1), *(point_iter + 2), *(point_iter + 3)};
+      all_points.push_back(point);
+    }
+
     visualizer_main.visualize_cloud(pointcloud_data, POINT_SIZE, point_cloud_path.filename().string());
 
     const auto channels_map = parse_by_channels(pointcloud_data);
@@ -85,7 +98,8 @@ int main(int argc, char* argv[])
       auto outliers = processing_logic::extract_intensity_outliers(channel_iter->second);
 //      visualizer_filtered.visualize_cloud(outliers, std::to_string(channel_iter->first));
 
-      auto new_clusters = processing_logic::cluster(outliers, DISTANCE_IN_CLUSTER, MIN_POINTS_PER_CLUSTER, MAX_POINTS_PER_CLUSTER);
+      auto new_clusters = processing_logic::cluster(outliers, DISTANCE_IN_CLUSTER1, MIN_POINTS_PER_CLUSTER1,
+                                                    MAX_POINTS_PER_CLUSTER1);
       std::copy(new_clusters.begin(), new_clusters.end(), std::back_inserter(clusters));
 
       auto& new_beam = channelled_clouds.emplace_back();
@@ -93,10 +107,42 @@ int main(int argc, char* argv[])
 
       points_vectors.push_back(std::move(outliers));
     }
-//    const auto fused_filtered_points = processing_logic::fuse_points(points_vectors);
+
+    const auto fused_filtered_points = processing_logic::fuse_points(points_vectors);
+
+    //TODO!!! PCA
+//    auto all_outliers = processing_logic::extract_intensity_outliers(all_points);
+//    auto all_clusters = processing_logic::cluster(all_outliers, 0.3f, 1, 200, 0.3f);
+
+    auto all_clusters = processing_logic::cluster(fused_filtered_points, DISTANCE_IN_CLUSTER2, MIN_POINTS_PER_CLUSTER2,
+                                                  MAX_POINTS_PER_CLUSTER2);
+
+    auto fused_filtered_center_mass_points = processing_logic::prepare_cloud_for_pca({all_clusters});
+
+    {
+      // Remove outlier regions
+      auto meta_clusters = processing_logic::cluster(fused_filtered_center_mass_points, 15.f, 1,
+                                                     std::numeric_limits<int>::max(),
+                                                     std::numeric_limits<float>::infinity());
+      std::size_t max_cluster_id{0};
+      for (std::size_t i{1}; i < meta_clusters.size(); ++i) {
+        if (meta_clusters.at(i).size() > meta_clusters.at(max_cluster_id).size()) {
+          max_cluster_id = i;
+        }
+      }
+      fused_filtered_center_mass_points = std::move(meta_clusters.at(max_cluster_id));
+    }
+    const auto main_direction = processing_logic::get_main_direction(fused_filtered_center_mass_points);
+    WeightedPolynomialsVector polynom
+        = {{WeightedPolynomial{{0.f, 0.f, main_direction.y / main_direction.x, 0.f}, 0.f}}};
+    visualizer_preprocessed_for_pca.visualize_clusters(all_clusters, {fused_filtered_center_mass_points}, polynom, point_cloud_path.filename().string() + "_filtered");
+//    visualizer_filtered.visualize_clusters(clusters, points_vectors, polynom, point_cloud_path.filename().string() + "_clustered");
+    //TODO!!! PCA
+
 //    visualizer_filtered.visualize_cloud(fused_filtered_points, point_cloud_path.filename().string() + "_filtered");
-    const auto polynomials = processing_logic::find_lines(channelled_clouds);
-    visualizer_filtered.visualize_clusters(clusters, points_vectors, polynomials, point_cloud_path.filename().string() + "_clustered");
+    // TODO!!! Polynomials
+    // const auto polynomials = processing_logic::find_lines(channelled_clouds);
+    // visualizer_filtered.visualize_clusters(clusters, points_vectors, polynomials, point_cloud_path.filename().string() + "_clustered");
   }
 
   return 0;

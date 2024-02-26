@@ -50,7 +50,6 @@ void render_box(pcl::visualization::PCLVisualizer& viewer, const Box& box, int i
 
 void clear(pcl::visualization::PCLVisualizer& viewer)
 {
-  viewer.setCameraPosition(0, 0, CAMERA_HEIGHT, 0, 1, 0);
   viewer.removeAllPointClouds();
   viewer.removeAllShapes();
 }
@@ -142,7 +141,7 @@ auto create_polynomials_representation(const pcl::PointCloud<pcl::PointXYZI>::Pt
     auto curve{boost::make_shared<pcl::PointCloud<pcl::PointXYZ>>()};
     // Generate points along the polynomial curve
     for (float x = cloud_min_point.x; x <= cloud_max_point.x; x += X_STEP) {
-      const auto x_square = x * x;
+      const auto x_square = square(x);
       const auto a = polynomial.coef0;
       const auto b = polynomial.coef1;
       const auto c = polynomial.coef2;
@@ -231,6 +230,7 @@ void Visualizer::init_if_needed_()
     viewer_->createInteractor();
     viewer_->setBackgroundColor(0, 0, 0);
     viewer_->addCoordinateSystem(1.0);
+    viewer_->setCameraPosition(0, 0, CAMERA_HEIGHT, 0, 1, 0);
     viewer_initialized_ = true;
   }
 }

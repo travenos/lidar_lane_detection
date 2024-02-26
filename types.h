@@ -3,6 +3,8 @@
 #include <map>
 #include <vector>
 
+constexpr inline float square(float val) { return val * val; }
+
 struct PlainPointXYZI
 {
   float x{};
@@ -30,3 +32,8 @@ struct WeightedPolynomial: Polynomial
 };
 
 using WeightedPolynomialsVector = std::vector<WeightedPolynomial>;
+
+struct Vec2D {
+  float x{};
+  float y{};
+};
