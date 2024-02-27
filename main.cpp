@@ -27,9 +27,9 @@ constexpr std::size_t POINT_SIZE = 5u;
 constexpr float DISTANCE_IN_CLUSTER1 = 0.2f;
 constexpr int MIN_POINTS_PER_CLUSTER1 = 1;
 constexpr int MAX_POINTS_PER_CLUSTER1 = 10;
-constexpr float DISTANCE_IN_CLUSTER2 = 0.3f;
+constexpr float DISTANCE_IN_CLUSTER2 = 0.4f;
 constexpr int MIN_POINTS_PER_CLUSTER2 = 1;
-constexpr int MAX_POINTS_PER_CLUSTER2 = 50;
+constexpr int MAX_POINTS_PER_CLUSTER2 = 250;
 
 auto parse_by_channels(const std::vector<float>& pointcloud_data) {
   PointsMap result;
@@ -133,10 +133,12 @@ int main(int argc, char* argv[])
       fused_filtered_center_mass_points = std::move(meta_clusters.at(max_cluster_id));
     }
     const auto main_direction = processing_logic::get_main_direction(fused_filtered_center_mass_points);
-    WeightedPolynomialsVector polynom
-        = {{WeightedPolynomial{{0.f, 0.f, main_direction.y / main_direction.x, 0.f}, 0.f}}};
-    visualizer_preprocessed_for_pca.visualize_clusters(all_clusters, {fused_filtered_center_mass_points}, polynom, point_cloud_path.filename().string() + "_filtered");
-//    visualizer_filtered.visualize_clusters(clusters, points_vectors, polynom, point_cloud_path.filename().string() + "_clustered");
+//    WeightedPolynomialsVector polynom
+//        = {{WeightedPolynomial{{0.f, 0.f, main_direction.y / main_direction.x, 0.f}, 0.f}}};
+    const auto polynomials = processing_logic::find_lines(fused_filtered_center_mass_points, main_direction);
+    visualizer_preprocessed_for_pca.visualize_clusters({}, {fused_filtered_center_mass_points}, polynomials, point_cloud_path.filename().string() + "_filtered");
+
+    //    visualizer_filtered.visualize_clusters(clusters, points_vectors, polynom, point_cloud_path.filename().string() + "_clustered");
     //TODO!!! PCA
 
 //    visualizer_filtered.visualize_cloud(fused_filtered_points, point_cloud_path.filename().string() + "_filtered");
