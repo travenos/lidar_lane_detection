@@ -87,6 +87,7 @@ PlainPointXYZI get_mass_center(const PointsVector& points)
 
 namespace processing_logic {
 
+// TODO!!! take map as argument, add info about parallelization
 PointsVector extract_intensity_outliers(const PointsVector& points)
 {
   PointsVector filtered;
@@ -119,6 +120,7 @@ PointsVector prepare_cloud_for_pca(const ChanneledClusteredPointClouds& clouds)
   PointsVector clustered_cloud;
 
   // Replace points by cluster centers and filter by ROI
+  // Note: this part may be parallelized in the future
   for (const auto& beam: clouds) {
     for (const auto& cluster : beam) {
       const auto mass_center = get_mass_center(cluster);
