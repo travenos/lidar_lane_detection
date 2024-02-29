@@ -26,12 +26,6 @@ struct Polynomial
   float coef3{};
 };
 
-struct WeightedPolynomial: Polynomial // TODO!!!
-{
-  float weight{};
-};
-
-using WeightedPolynomialsVector = std::vector<WeightedPolynomial>; // TODO!!!
 using PolynomialsVector = std::vector<Polynomial>;
 
 struct Vec2D {

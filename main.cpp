@@ -1,7 +1,7 @@
 #include "visualizer.h"
 #include "point_extractor.h"
 #include "clustering.h"
-#include "polynomial_creator.h"
+#include "lines_detector.h"
 #include "main_direction_getter.h"
 #include "types.h"
 

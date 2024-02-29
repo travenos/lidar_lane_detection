@@ -1,11 +1,14 @@
-#include "polynomial_creator.h"
+#include "lines_detector.h"
 
 #include <Eigen/Core>
+#include <Eigen/Cholesky>
 
 #include <array>
 #include <algorithm>
 #include <cmath>
+#include <initializer_list>
 #include <list>
+#include <vector>
 
 namespace {
 
@@ -14,7 +17,7 @@ constexpr float deg_2_rad(float deg) { return deg * M_PIf32 / 180.f; }
 constexpr float MAX_ANGLE_DEVIATION = deg_2_rad(10.f);
 constexpr float MAIN_PART_RELATIVE_SIZE = 0.6f;
 constexpr float MAIN_PART_SEGMENT_WIDTH = 6.f;
-constexpr float NEAR_POINT_DIST = 0.1f;
+constexpr float NEAR_POINT_DIST_IN_SCORING = 0.1f;
 constexpr float MIN_DIST_FROM_ORIGIN = 1.f;
 constexpr float MAX_DIST_FROM_ORIGIN = 4.5f;
 constexpr std::size_t MAX_BEST_ELEMENTS_COUNT = 150u;
@@ -23,6 +26,8 @@ constexpr float ADDITIONAL_PART_OVERLAP_RELATIVE_SIZE = 0.4f;
 constexpr float ADDITIONAL_SEGMENT_ANGLE = deg_2_rad(45.f);
 constexpr float MAX_ANGLE_DEV_IN_SEGMENT = deg_2_rad(35.f);
 constexpr float HOW_SEGMENT_IS_BETTER_COEF = 2.f;
+
+constexpr float NEAR_POINT_DIST_IN_POINT_SELECTION = 0.3f;
 
 const float MAX_ANGLE_DEVIATION_TAN = std::tan(MAX_ANGLE_DEVIATION);
 const float MIN_ANGLE_DEV_IN_SEGMENT_COS = std::cos(MAX_ANGLE_DEV_IN_SEGMENT);
@@ -193,9 +198,9 @@ float get_dist(const Eigen::Vector2f& point, const Eigen::Vector3f& line)
   return distance;
 }
 
-bool point_fits_line(const Eigen::Vector2f& point, const Eigen::Vector3f& line)
+bool point_fits_line(const Eigen::Vector2f& point, const Eigen::Vector3f& line, float tolerance)
 {
-  return get_dist(point, line) < NEAR_POINT_DIST;
+  return get_dist(point, line) < tolerance;
 }
 
 float score_line(const Eigen::Vector3f& line, const PointCloudSegments& point_cloud_segments)
@@ -203,7 +208,7 @@ float score_line(const Eigen::Vector3f& line, const PointCloudSegments& point_cl
   std::size_t fitting_points{0u};
   for (const auto& segment : point_cloud_segments) {
     for (int i{0}; i < segment.rows(); ++i) {
-      fitting_points += point_fits_line(segment.row(i), line);
+      fitting_points += point_fits_line(segment.row(i), line, NEAR_POINT_DIST_IN_SCORING);
     }
   }
 
@@ -297,7 +302,7 @@ PointCloudSegments get_additional_left_right_segments(const Eigen::MatrixXf& mat
       const auto& point = matrix.row(i);
       if (comparer(point.x(), x_start)) { // point.x() < x_start for left part and point.x() > x_start for right part
         const auto min_max_y = std::minmax(main_line.get_y(point.x()), segment_line.get_y(point.x()));
-        if (point.y() >= min_max_y.first && point.y() <= min_max_y.second) {
+        if (point.y() > min_max_y.first && point.y() <= min_max_y.second) {
           if (segment_id == LeftRightSegment::Left && point.x() < x_middle) {
             indices.push_back(i);
           } else if (segment_id == LeftRightSegment::Right && point.x() >= x_middle) {
@@ -386,17 +391,97 @@ WeightedLinesPair get_best_segment_pair(const WeightedLinesPair& best_main_pair,
   return best_segment_pair;
 }
 
+template <typename Comp>
+Eigen::MatrixXf fuse_segments(const PointCloudSegments& left_right_segments,
+                              float x_start, Comp comparer)
+{
+  std::array<std::vector<int>, 2> indices;
+  for (std::size_t segment_id{0u}; segment_id < LeftRightSegment::Size; ++segment_id) {
+    for (int id{0}; id < left_right_segments[segment_id].rows(); ++id)
+    {
+      const float point_x = left_right_segments[segment_id].row(id).x();
+      if (comparer(point_x, x_start)) { // point_x < x_start for left part and point_x > x_start for right part
+        indices[segment_id].push_back(id);
+      }
+    }
+  }
+  const std::size_t total_indices = indices[LeftRightSegment::Left].size() + indices[LeftRightSegment::Right].size();
+  Eigen::MatrixXf result{total_indices, 2};
+  int result_id{0};
+  for (std::size_t segment_id{0u}; segment_id < LeftRightSegment::Size; ++segment_id) {
+    for (int id : indices[segment_id])
+    {
+      result.row(result_id) = left_right_segments[segment_id].row(id);
+      ++result_id;
+    }
+  }
+  return result;
+}
+
+Eigen::MatrixXf get_near_points_in_segment(const Eigen::Vector3f& line, const Eigen::MatrixXf& points)
+{
+  std::vector<int> indices;
+  for (int id{0}; id < points.rows(); ++id) {
+    if (point_fits_line(points.row(id), line, NEAR_POINT_DIST_IN_POINT_SELECTION)) {
+      indices.push_back(id);
+    }
+  }
+  Eigen::MatrixXf result_points{indices.size(), 2};
+  int result_id{0};
+  for (int id : indices) {
+    result_points.row(result_id) = points.row(id);
+    ++result_id;
+  }
+  return result_points;
+}
+
+Eigen::MatrixXf concatenate_points(const std::initializer_list<const Eigen::MatrixXf*>& point_matrices)
+{
+  Eigen::MatrixXf result;
+  if (point_matrices.size() == 0u) {
+    return result;
+  }
+  int rows{0};
+  for (const auto* point_matrix : point_matrices) {
+    rows += point_matrix->rows();
+  }
+  const auto cols = (*point_matrices.begin())->cols();
+  result.conservativeResize(rows, cols);
+  int start_row{0};
+  for (const auto* point_matrix : point_matrices) {
+    result.block(start_row, 0, point_matrix->rows(), cols) = *point_matrix;
+    start_row += point_matrix->rows();
+  }
+  return result;
+}
+
+Eigen::Vector4f approxymate_points_by_polinomials(const Eigen::MatrixXf& points)
+{
+  Eigen::MatrixXf A{points.rows(), 4};
+  for (int i{0}; i < points.rows(); ++i) {
+    const float x = points.row(i).x();
+    const float x_square = square(x);
+    A(i, 0) = x * x_square; // x^3
+    A(i, 1) = x_square;     // x^2
+    A(i, 2) = x;            // x
+    A(i, 3) = 1.f;          // constant
+  }
+
+  // Solve the normal equation A^TAx = A^Ty for x using the least squares method
+  Eigen::Vector4f coefficients = (A.transpose() * A).ldlt().solve(A.transpose() * points.col(1));
+  return coefficients;
+}
 
 }
 
-
 namespace processing_logic {
 
-WeightedPolynomialsVector find_lines(const PointsVector& cloud, const Vec2D& main_direction)
+PolynomialsVector find_lines(const PointsVector& cloud, const Vec2D& main_direction)
 {
   Eigen::MatrixXf matrix_cloud = point_cloud_to_matrix(cloud);
   // Rotate the point cloud to put it along the main adirection
-  rotate_matrix(matrix_cloud, -std::atan2(main_direction.y, main_direction.x));
+  const float main_direction_angle = std::atan2(main_direction.y, main_direction.x);
+  rotate_matrix(matrix_cloud, -main_direction_angle);
   // Find size of the cloud
   Eigen::Vector2f cloud_down_left;
   Eigen::Vector2f cloud_up_right;
@@ -407,6 +492,7 @@ WeightedPolynomialsVector find_lines(const PointsVector& cloud, const Vec2D& mai
   // Find best lines in the main part
   // segment_id == 0 is upper part, segment_id == 1 is down part
   WeightedLinesSet main_part_results;
+  std::array<Eigen::MatrixXf, UpDownSegment::Size> main_segment_points;
   for (std::size_t segment_id{0u}; segment_id < UpDownSegment::Size; ++segment_id) {
     Eigen::Vector2f left_down;
     Eigen::Vector2f right_up;
@@ -417,14 +503,17 @@ WeightedPolynomialsVector find_lines(const PointsVector& cloud, const Vec2D& mai
       left_down = Eigen::Vector2f{-main_part_lenght / 2.f, -MAIN_PART_SEGMENT_WIDTH};
       right_up = Eigen::Vector2f{main_part_lenght / 2.f, 0.f};
     }
-    auto segments = get_main_left_right_segments(matrix_cloud, left_down, right_up);
-    main_part_results[segment_id] = find_best_lines(segments).obtain_list();
+    auto left_right_segments = get_main_left_right_segments(matrix_cloud, left_down, right_up);
+    main_part_results[segment_id] = find_best_lines(left_right_segments).obtain_list();
+    main_segment_points[segment_id] = concatenate_points({&(left_right_segments[LeftRightSegment::Left]),
+                                                          &(left_right_segments[LeftRightSegment::Right])});
   }
-  auto best_main_pair = choose_best_lines_pair(main_part_results);
+  const auto best_main_pair = choose_best_lines_pair(main_part_results);
   std::array<float, UpDownSegment::Size> main_pair_scores{{0.f, 0.f}};
 
   // Find best lines in left additional segments
   WeightedLinesSet left_segment_results;
+  std::array<Eigen::MatrixXf, UpDownSegment::Size> left_segment_points;
   for (std::size_t segment_id{0u}; segment_id < UpDownSegment::Size; ++segment_id) {
     const auto& main_line_coefs = best_main_pair[segment_id].second;
     const Line main_line{main_line_coefs};
@@ -448,11 +537,17 @@ WeightedPolynomialsVector find_lines(const PointsVector& cloud, const Vec2D& mai
     best_lines.merge(find_best_lines_in_segment(down_segments, main_line_coefs, segment_x_middle, std::less<float>{}));
     main_pair_scores[segment_id] = score_line(main_line_coefs, up_segments) + score_line(main_line_coefs, down_segments);
     left_segment_results[segment_id] = best_lines.obtain_list();
+
+    const float points_segment_x_start = -cloud_length / 2.f * MAIN_PART_RELATIVE_SIZE;
+    Eigen::MatrixXf up_segment_points = fuse_segments(up_segments, points_segment_x_start, std::less<float>{});
+    Eigen::MatrixXf down_segment_points = fuse_segments(down_segments, points_segment_x_start, std::less<float>{});
+    left_segment_points[segment_id] = concatenate_points({&up_segment_points, &down_segment_points});
   }
   const auto best_left_segment_pair = get_best_segment_pair(best_main_pair, main_pair_scores, left_segment_results);
 
   // Find best lines in right additional segments
   WeightedLinesSet right_segment_results;
+  std::array<Eigen::MatrixXf, UpDownSegment::Size> right_segment_points;
   for (std::size_t segment_id{0u}; segment_id < UpDownSegment::Size; ++segment_id) {
     const auto& main_line_coefs = best_main_pair[segment_id].second;
     const Line main_line{main_line_coefs};
@@ -476,37 +571,56 @@ WeightedPolynomialsVector find_lines(const PointsVector& cloud, const Vec2D& mai
     best_lines.merge(find_best_lines_in_segment(down_segments, main_line_coefs, segment_x_middle, std::greater<float>{}));
     main_pair_scores[segment_id] = score_line(main_line_coefs, up_segments) + score_line(main_line_coefs, down_segments);
     right_segment_results[segment_id] = best_lines.obtain_list();
+
+    const float points_segment_x_start = cloud_length / 2.f * MAIN_PART_RELATIVE_SIZE;
+    Eigen::MatrixXf up_segment_points = fuse_segments(up_segments, points_segment_x_start, std::greater<float>{});
+    Eigen::MatrixXf down_segment_points = fuse_segments(down_segments, points_segment_x_start, std::greater<float>{});
+    right_segment_points[segment_id] = concatenate_points({&up_segment_points, &down_segment_points});
   }
   const auto best_right_segment_pair = get_best_segment_pair(best_main_pair, main_pair_scores, right_segment_results);
+
+  PolynomialsVector result{};
+  for (std::size_t segment_id{0u}; segment_id < UpDownSegment::Size; ++segment_id) {
+    // Find points which lay near lines in each segment
+    auto left_segment_line_points = get_near_points_in_segment(best_left_segment_pair[segment_id].second, left_segment_points[segment_id]);
+    auto main_segment_line_points = get_near_points_in_segment(best_main_pair[segment_id].second, main_segment_points[segment_id]);
+    auto right_segment_line_points = get_near_points_in_segment(best_right_segment_pair[segment_id].second, right_segment_points[segment_id]);
+    auto line_points = concatenate_points({&left_segment_line_points, &main_segment_line_points, &right_segment_line_points});
+    // Rotate points to the original coordinales system
+    rotate_matrix(line_points, main_direction_angle);
+    // Approximate points by a polynomial
+    auto polynomial_vec = approxymate_points_by_polinomials(line_points);
+    Polynomial polynomial{polynomial_vec(0), polynomial_vec(1), polynomial_vec(2), polynomial_vec(3)};
+    result.push_back(polynomial);
+  }
 
   //TODO!!! temporary
 //  std::cout << best_pair.front().transpose() << std::endl;
 //  std::cout << best_pair.back().transpose() << std::endl;
 
-  WeightedPolynomialsVector result{};
-  auto lines = {best_main_pair.at(0), best_main_pair.at(1),
-                best_left_segment_pair.at(0), best_left_segment_pair.at(1),
-                best_right_segment_pair.at(0), best_right_segment_pair.at(1)
-               };
-  for (const auto& line : lines) {
-    Eigen::Vector2f point{0, -line.second(2) / line.second(1)};
-    float angle = std::atan2(main_direction.y, main_direction.x);
-    Eigen::Matrix2f rotation_matrix;
-    const float angle_sin = std::sin(angle);
-    const float angle_cos = std::cos(angle);
-    rotation_matrix << angle_cos, -angle_sin,
-                      angle_sin, angle_cos;
+//  auto lines = {best_main_pair.at(0), best_main_pair.at(1),
+//                best_left_segment_pair.at(0), best_left_segment_pair.at(1),
+//                best_right_segment_pair.at(0), best_right_segment_pair.at(1)
+//               };
+//  for (const auto& line : lines) {
+//    Eigen::Vector2f point{0, -line.second(2) / line.second(1)};
+//    float angle = std::atan2(main_direction.y, main_direction.x);
+//    Eigen::Matrix2f rotation_matrix;
+//    const float angle_sin = std::sin(angle);
+//    const float angle_cos = std::cos(angle);
+//    rotation_matrix << angle_cos, -angle_sin,
+//                      angle_sin, angle_cos;
 
-    Eigen::Vector2f point2 = rotation_matrix * point;
-    Eigen::Vector2f vector_normal2 = rotation_matrix * line.second.topRows<2>();
-    float c2 = -point2.dot(vector_normal2);
+//    Eigen::Vector2f point2 = rotation_matrix * point;
+//    Eigen::Vector2f vector_normal2 = rotation_matrix * line.second.topRows<2>();
+//    float c2 = -point2.dot(vector_normal2);
 
-    WeightedPolynomial polynomial;
-    polynomial.coef2 = - vector_normal2(0) / vector_normal2(1);
-    polynomial.coef3 = - c2 / vector_normal2(1);
-    result.push_back(polynomial);
-    result.push_back(polynomial);
-  }
+//    WeightedPolynomial polynomial;
+//    polynomial.coef2 = - vector_normal2(0) / vector_normal2(1);
+//    polynomial.coef3 = - c2 / vector_normal2(1);
+//    result.push_back(polynomial);
+//    result.push_back(polynomial);
+//  }
   return result;
   //TODO!!! temporary
 }

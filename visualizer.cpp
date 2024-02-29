@@ -127,7 +127,7 @@ pcl::PointCloud<pcl::PointXYZI>::Ptr convert_to_cloud(const PointsVector& pointc
 }
 
 auto create_polynomials_representation(const pcl::PointCloud<pcl::PointXYZI>::Ptr& cloud,
-                                       const WeightedPolynomialsVector& polynomials)
+                                       const PolynomialsVector& polynomials)
 {
   constexpr float X_STEP = 0.01f;
 
@@ -202,7 +202,7 @@ void Visualizer::visualize_cloud(const PointsVector& pointcloud_data, const std:
 
 void Visualizer::visualize_clusters(const std::vector<PointsVector>& clusters,
                                     const std::vector<PointsVector>& all_points,
-                                    const WeightedPolynomialsVector& polynomials,
+                                    const PolynomialsVector& polynomials,
                                     const std::string& name)
 {
   auto cloud{boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>()};
