@@ -3,7 +3,6 @@
 #include <stdexcept>
 
 constexpr int DIMENSIONS = 2;
-constexpr bool CENTERED = true;
 
 namespace processing_logic {
 
@@ -17,10 +16,8 @@ Vec2D get_main_direction(const PointsVector& points)
     data.row(static_cast<int>(i)).y() = point.y;
   }
 
-  if constexpr (CENTERED) {
-    Eigen::RowVectorXf mean = data.colwise().mean();
-    data = data.rowwise() - mean;
-  }
+  Eigen::RowVectorXf mean = data.colwise().mean();
+  data = data.rowwise() - mean;
 
   Eigen::MatrixXf cov = (data.adjoint() * data / static_cast<float>(data.rows() - 1));
   Eigen::SelfAdjointEigenSolver<Eigen::MatrixXf> eigensolver{cov};

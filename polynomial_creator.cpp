@@ -48,23 +48,17 @@ struct Line {
 
   float get_y(float x) const { return k * x + b; }
 
-  Eigen::Vector3f to_general_form() const
-  {
-    Eigen::Vector3f line_coefs{k, -1.f, b};
-    if (k < 0.f) {
-      line_coefs *= -1;
-    }
-    return line_coefs;
-  }
-
   float k{};
   float b{};
 };
 
+using PointCloudSegments = std::array<Eigen::MatrixXf, LeftRightSegment::Size>;
+using WeightedLinesSet = std::array<std::list<std::pair<float, Eigen::Vector3f>>, UpDownSegment::Size>;
+using WeightedLinesPair = std::array<std::pair<float, Eigen::Vector3f>, UpDownSegment::Size>;
 // TODO!!! add information about possible parallelization
 
 template <typename T>
-class PriorityList {
+class PriorityList final {
 public:
   template <typename FCN>
   PriorityList(std::size_t max_size, FCN&& comparer)
@@ -145,13 +139,13 @@ void get_min_max(const Eigen::MatrixXf& matrix, Eigen::Vector2f& min, Eigen::Vec
   max = matrix.colwise().maxCoeff();
 }
 
-std::array<Eigen::MatrixXf, 2> get_main_left_right_segments(const Eigen::MatrixXf& matrix,
-                                                            const Eigen::Vector2f& left_down,
-                                                            const Eigen::Vector2f& right_up)
+PointCloudSegments get_main_left_right_segments(const Eigen::MatrixXf& matrix,
+                                                const Eigen::Vector2f& left_down,
+                                                const Eigen::Vector2f& right_up)
 {
-  std::array<Eigen::MatrixXf, LeftRightSegment::Size> result;
+  PointCloudSegments result;
   // segment_id == 0 is left part, segment_id == 1 is right part
-  for (std::size_t segment_id{LeftRightSegment::Left}; segment_id < LeftRightSegment::Size; ++segment_id) {
+  for (std::size_t segment_id{0u}; segment_id < LeftRightSegment::Size; ++segment_id) {
     std::vector<int> indices;
     for (int i{0}; i < matrix.rows(); ++i) {
       const auto& point = matrix.row(i);
@@ -204,7 +198,7 @@ bool point_fits_line(const Eigen::Vector2f& point, const Eigen::Vector3f& line)
   return get_dist(point, line) < NEAR_POINT_DIST;
 }
 
-float score_line(const Eigen::Vector3f& line, const std::array<Eigen::MatrixXf, LeftRightSegment::Size>& point_cloud_segments)
+float score_line(const Eigen::Vector3f& line, const PointCloudSegments& point_cloud_segments)
 {
   std::size_t fitting_points{0u};
   for (const auto& segment : point_cloud_segments) {
@@ -216,7 +210,7 @@ float score_line(const Eigen::Vector3f& line, const std::array<Eigen::MatrixXf, 
   return static_cast<float>(fitting_points);
 }
 
-auto find_best_lines(const std::array<Eigen::MatrixXf, LeftRightSegment::Size>& point_cloud_segments)
+auto find_best_lines(const PointCloudSegments& point_cloud_segments)
 {
   using StoredElement = std::pair<float, Eigen::Vector3f>;
   auto score_comparer = [](const StoredElement& first_val, const StoredElement& second_val) {
@@ -245,8 +239,12 @@ auto find_best_lines(const std::array<Eigen::MatrixXf, LeftRightSegment::Size>& 
   return result;
 }
 
-auto choose_best_lines_pair(
-    const std::array<std::list<std::pair<float, Eigen::Vector3f>>, UpDownSegment::Size>& lines)
+bool are_lines_distant(const Eigen::Vector3f& line1, const Eigen::Vector3f& line2)
+{
+  return std::fabs(-line1(2) / line1(1) - (-line2(2) / line2(1))) >= MIN_DIST_FROM_ORIGIN;
+}
+
+auto choose_best_lines_pair(const WeightedLinesSet& lines)
 {
   if (lines[UpDownSegment::Up].empty()) {
     throw std::invalid_argument{"No lines found in the upper part"};
@@ -260,7 +258,7 @@ auto choose_best_lines_pair(
   for (const auto& scored_up_line: lines[UpDownSegment::Up]) {
     for (const auto& scored_down_line: lines[UpDownSegment::Down]) {
       // Filter out too close lines
-      if (scored_up_line.second.isApprox(scored_down_line.second, MIN_DIST_FROM_ORIGIN)) {
+      if (!are_lines_distant(scored_up_line.second, scored_down_line.second)) {
         continue;
       }
       Eigen::Vector2f norm_vec_up = scored_up_line.second.topRows<2>().normalized();
@@ -284,16 +282,16 @@ Line get_segment_line(const Line& main_line, float x_start, float line_angle)
   segment_line.b = y_start - segment_line.k * x_start;
   return segment_line;
 }
+
 template <typename Comp>
-std::array<Eigen::MatrixXf, LeftRightSegment::Size>
-get_additional_left_right_segments(const Eigen::MatrixXf& matrix,
-                                   const Line& main_line,
-                                   const Line& segment_line,
-                                   float x_start, float x_middle, Comp comparer)
+PointCloudSegments get_additional_left_right_segments(const Eigen::MatrixXf& matrix,
+                                                      const Line& main_line,
+                                                      const Line& segment_line,
+                                                      float x_start, float x_middle, Comp comparer)
 {
-  std::array<Eigen::MatrixXf, LeftRightSegment::Size> result;
+  PointCloudSegments result;
   // segment_id == 0 is left part, segment_id == 1 is right part
-  for (std::size_t segment_id{LeftRightSegment::Left}; segment_id < result.size(); ++segment_id) {
+  for (std::size_t segment_id{0u}; segment_id < result.size(); ++segment_id) {
     std::vector<int> indices;
     for (int i{0}; i < matrix.rows(); ++i) {
       const auto& point = matrix.row(i);
@@ -332,9 +330,8 @@ bool angle_is_near(const Eigen::Vector3f& line1, const Eigen::Vector3f& line2)
   return std::fabs(norm_vect1.dot(norm_vect2)) > MIN_ANGLE_DEV_IN_SEGMENT_COS;
 }
 
-
 template <typename Comp>
-auto find_best_lines_in_segment(const std::array<Eigen::MatrixXf, LeftRightSegment::Size>& point_cloud_segments,
+auto find_best_lines_in_segment(const PointCloudSegments& point_cloud_segments,
                                 const Eigen::Vector3f& main_line, float x_middle, Comp comparer)
 {
   using StoredElement = std::pair<float, Eigen::Vector3f>;
@@ -365,10 +362,30 @@ auto find_best_lines_in_segment(const std::array<Eigen::MatrixXf, LeftRightSegme
   return result;
 }
 
-float get_pair_score(const std::array<std::pair<float, Eigen::Vector3f>, UpDownSegment::Size>& lines)
+float get_pair_score(const WeightedLinesPair& lines)
 {
   return lines[UpDownSegment::Up].first + lines[UpDownSegment::Down].first;
 }
+
+WeightedLinesPair get_best_segment_pair(const WeightedLinesPair& best_main_pair,
+                                        const std::array<float, UpDownSegment::Size>& main_pair_scores,
+                                        const WeightedLinesSet& segment_results)
+{
+  WeightedLinesPair best_segment_pair;
+  try {
+    best_segment_pair = choose_best_lines_pair(segment_results);
+    const auto min_score = HOW_SEGMENT_IS_BETTER_COEF * (main_pair_scores[UpDownSegment::Down] + main_pair_scores[UpDownSegment::Up]);
+    if (get_pair_score(best_segment_pair) >= min_score) {
+      return best_segment_pair;
+    }
+  } catch (const std::invalid_argument&) {
+  }
+  best_segment_pair = best_main_pair;
+  best_segment_pair[UpDownSegment::Down].first = main_pair_scores[UpDownSegment::Down];
+  best_segment_pair[UpDownSegment::Up].first = main_pair_scores[UpDownSegment::Up];
+  return best_segment_pair;
+}
+
 
 }
 
@@ -389,8 +406,8 @@ WeightedPolynomialsVector find_lines(const PointsVector& cloud, const Vec2D& mai
   const float main_part_lenght = cloud_length * MAIN_PART_RELATIVE_SIZE;
   // Find best lines in the main part
   // segment_id == 0 is upper part, segment_id == 1 is down part
-  std::array<std::list<std::pair<float, Eigen::Vector3f>>, UpDownSegment::Size> main_part_results;
-  for (std::size_t segment_id{UpDownSegment::Up}; segment_id < UpDownSegment::Size; ++segment_id) {
+  WeightedLinesSet main_part_results;
+  for (std::size_t segment_id{0u}; segment_id < UpDownSegment::Size; ++segment_id) {
     Eigen::Vector2f left_down;
     Eigen::Vector2f right_up;
     if (segment_id == UpDownSegment::Up) { // upper part
@@ -407,8 +424,8 @@ WeightedPolynomialsVector find_lines(const PointsVector& cloud, const Vec2D& mai
   std::array<float, UpDownSegment::Size> main_pair_scores{{0.f, 0.f}};
 
   // Find best lines in left additional segments
-  std::array<std::list<std::pair<float, Eigen::Vector3f>>, UpDownSegment::Size> left_segment_results;
-  for (std::size_t segment_id{UpDownSegment::Up}; segment_id < UpDownSegment::Size; ++segment_id) {
+  WeightedLinesSet left_segment_results;
+  for (std::size_t segment_id{0u}; segment_id < UpDownSegment::Size; ++segment_id) {
     const auto& main_line_coefs = best_main_pair[segment_id].second;
     const Line main_line{main_line_coefs};
     const float segment_x_start = -cloud_length / 2.f * (MAIN_PART_RELATIVE_SIZE - ADDITIONAL_PART_OVERLAP_RELATIVE_SIZE);
@@ -432,24 +449,11 @@ WeightedPolynomialsVector find_lines(const PointsVector& cloud, const Vec2D& mai
     main_pair_scores[segment_id] = score_line(main_line_coefs, up_segments) + score_line(main_line_coefs, down_segments);
     left_segment_results[segment_id] = best_lines.obtain_list();
   }
-  // TODO!!! move to a function
-  std::array<std::pair<float, Eigen::Vector3f>, UpDownSegment::Size> best_left_segment_pair;
-  try {
-    best_left_segment_pair = choose_best_lines_pair(left_segment_results);
-    if (get_pair_score(best_left_segment_pair) < HOW_SEGMENT_IS_BETTER_COEF * (main_pair_scores[UpDownSegment::Down] + main_pair_scores[UpDownSegment::Up])) {
-      best_left_segment_pair = best_main_pair;
-      best_left_segment_pair[UpDownSegment::Down].first = main_pair_scores[UpDownSegment::Down];
-      best_left_segment_pair[UpDownSegment::Up].first = main_pair_scores[UpDownSegment::Up];
-    }
-  } catch (const std::invalid_argument&) {
-    best_left_segment_pair = best_main_pair;
-    best_left_segment_pair[UpDownSegment::Down].first = main_pair_scores[UpDownSegment::Down];
-    best_left_segment_pair[UpDownSegment::Up].first = main_pair_scores[UpDownSegment::Up];
-  }
+  const auto best_left_segment_pair = get_best_segment_pair(best_main_pair, main_pair_scores, left_segment_results);
 
   // Find best lines in right additional segments
-  std::array<std::list<std::pair<float, Eigen::Vector3f>>, UpDownSegment::Size> right_segment_results;
-  for (std::size_t segment_id{UpDownSegment::Up}; segment_id < UpDownSegment::Size; ++segment_id) {
+  WeightedLinesSet right_segment_results;
+  for (std::size_t segment_id{0u}; segment_id < UpDownSegment::Size; ++segment_id) {
     const auto& main_line_coefs = best_main_pair[segment_id].second;
     const Line main_line{main_line_coefs};
     const float segment_x_start = cloud_length / 2.f * (MAIN_PART_RELATIVE_SIZE - ADDITIONAL_PART_OVERLAP_RELATIVE_SIZE);
@@ -473,20 +477,7 @@ WeightedPolynomialsVector find_lines(const PointsVector& cloud, const Vec2D& mai
     main_pair_scores[segment_id] = score_line(main_line_coefs, up_segments) + score_line(main_line_coefs, down_segments);
     right_segment_results[segment_id] = best_lines.obtain_list();
   }
-  // TODO!!! move to a function
-  std::array<std::pair<float, Eigen::Vector3f>, UpDownSegment::Size> best_right_segment_pair;
-  try {
-    best_right_segment_pair = choose_best_lines_pair(right_segment_results);
-    if (get_pair_score(best_right_segment_pair) < HOW_SEGMENT_IS_BETTER_COEF * (main_pair_scores[UpDownSegment::Down] + main_pair_scores[UpDownSegment::Up])) {
-      best_right_segment_pair = best_main_pair;
-      best_right_segment_pair[UpDownSegment::Down].first = main_pair_scores[UpDownSegment::Down];
-      best_right_segment_pair[UpDownSegment::Up].first = main_pair_scores[UpDownSegment::Up];
-    }
-  } catch (const std::invalid_argument&) {
-    best_right_segment_pair = best_main_pair;
-    best_right_segment_pair[UpDownSegment::Down].first = main_pair_scores[UpDownSegment::Down];
-    best_right_segment_pair[UpDownSegment::Up].first = main_pair_scores[UpDownSegment::Up];
-  }
+  const auto best_right_segment_pair = get_best_segment_pair(best_main_pair, main_pair_scores, right_segment_results);
 
   //TODO!!! temporary
 //  std::cout << best_pair.front().transpose() << std::endl;
