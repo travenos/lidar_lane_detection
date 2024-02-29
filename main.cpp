@@ -24,12 +24,12 @@ static_assert (sizeof (float) == 4, "Float doesn't consist of 4 bytes");
 constexpr std::size_t POINT_SIZE = 5u;
 
 // PARAMETERS
-constexpr float DISTANCE_IN_CLUSTER1 = 0.2f;
-constexpr int MIN_POINTS_PER_CLUSTER1 = 1;
-constexpr int MAX_POINTS_PER_CLUSTER1 = 10;
+
 constexpr float DISTANCE_IN_CLUSTER2 = 0.4f;
 constexpr int MIN_POINTS_PER_CLUSTER2 = 1;
 constexpr int MAX_POINTS_PER_CLUSTER2 = 250;
+
+constexpr float METALCUSTER_DISTANCE = 15.f;
 
 auto parse_by_channels(const std::vector<float>& pointcloud_data) {
   PointsMap result;
@@ -98,12 +98,12 @@ int main(int argc, char* argv[])
       auto outliers = processing_logic::extract_intensity_outliers(channel_iter->second);
 //      visualizer_filtered.visualize_cloud(outliers, std::to_string(channel_iter->first));
 
-      auto new_clusters = processing_logic::cluster(outliers, DISTANCE_IN_CLUSTER1, MIN_POINTS_PER_CLUSTER1,
-                                                    MAX_POINTS_PER_CLUSTER1);
-      std::copy(new_clusters.begin(), new_clusters.end(), std::back_inserter(clusters));
+//      auto new_clusters = processing_logic::cluster(outliers, DISTANCE_IN_CLUSTER1, MIN_POINTS_PER_CLUSTER1,
+//                                                    MAX_POINTS_PER_CLUSTER1);
+//      std::copy(new_clusters.begin(), new_clusters.end(), std::back_inserter(clusters));
 
-      auto& new_beam = channelled_clouds.emplace_back();
-      new_beam = std::move(new_clusters);
+//      auto& new_beam = channelled_clouds.emplace_back();
+//      new_beam = std::move(new_clusters);
 
       points_vectors.push_back(std::move(outliers));
     }
@@ -121,7 +121,7 @@ int main(int argc, char* argv[])
 
     {
       // Remove outlier regions
-      auto meta_clusters = processing_logic::cluster(fused_filtered_center_mass_points, 15.f, 1,
+      auto meta_clusters = processing_logic::cluster(fused_filtered_center_mass_points, METALCUSTER_DISTANCE, 1,
                                                      std::numeric_limits<int>::max(),
                                                      std::numeric_limits<float>::infinity());
       std::size_t max_cluster_id{0};
@@ -133,8 +133,8 @@ int main(int argc, char* argv[])
       fused_filtered_center_mass_points = std::move(meta_clusters.at(max_cluster_id));
     }
     const auto main_direction = processing_logic::get_main_direction(fused_filtered_center_mass_points);
-//    WeightedPolynomialsVector polynom
-//        = {{WeightedPolynomial{{0.f, 0.f, main_direction.y / main_direction.x, 0.f}, 0.f}}};
+//    PolynomialsVector polynomials
+//        = {{Polynomial{0.f, 0.f, main_direction.y / main_direction.x, 0.f}}};
     const auto polynomials = processing_logic::find_lines(fused_filtered_center_mass_points, main_direction);
     visualizer_preprocessed_for_pca.visualize_clusters({}, {fused_filtered_center_mass_points}, polynomials, point_cloud_path.filename().string() + "_filtered");
 

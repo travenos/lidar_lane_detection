@@ -22,7 +22,7 @@ constexpr float MIN_DIST_FROM_ORIGIN = 1.f;
 constexpr float MAX_DIST_FROM_ORIGIN = 4.5f;
 constexpr std::size_t MAX_BEST_ELEMENTS_COUNT = 150u;
 
-constexpr float ADDITIONAL_PART_OVERLAP_RELATIVE_SIZE = 0.4f;
+constexpr float ADDITIONAL_PART_OVERLAP_RELATIVE_SIZE = 0.5f;
 constexpr float ADDITIONAL_SEGMENT_ANGLE = deg_2_rad(45.f);
 constexpr float MAX_ANGLE_DEV_IN_SEGMENT = deg_2_rad(35.f);
 constexpr float HOW_SEGMENT_IS_BETTER_COEF = 2.f;
@@ -262,12 +262,18 @@ auto choose_best_lines_pair(const WeightedLinesSet& lines)
   const auto* best_down_line = &(lines[UpDownSegment::Down].front());
   for (const auto& scored_up_line: lines[UpDownSegment::Up]) {
     for (const auto& scored_down_line: lines[UpDownSegment::Down]) {
+      const auto& up_line = scored_up_line.second;
+      const auto& down_line = scored_down_line.second;
       // Filter out too close lines
-      if (!are_lines_distant(scored_up_line.second, scored_down_line.second)) {
+      if (!are_lines_distant(up_line, down_line)) {
         continue;
       }
-      Eigen::Vector2f norm_vec_up = scored_up_line.second.topRows<2>().normalized();
-      Eigen::Vector2f norm_vec_down = scored_down_line.second.topRows<2>().normalized();
+      // Filter out pairs where up lines are lower than down lines
+      if (-up_line(2) / up_line(1) < -down_line(2) / down_line(1)) {
+        continue;
+      }
+      Eigen::Vector2f norm_vec_up = up_line.topRows<2>().normalized();
+      Eigen::Vector2f norm_vec_down = down_line.topRows<2>().normalized();
       const float lines_cos = std::fabs(norm_vec_up.dot(norm_vec_down));
       if (lines_cos > max_cos) {
         best_up_line = &(scored_up_line);
@@ -593,34 +599,35 @@ PolynomialsVector find_lines(const PointsVector& cloud, const Vec2D& main_direct
     Polynomial polynomial{polynomial_vec(0), polynomial_vec(1), polynomial_vec(2), polynomial_vec(3)};
     result.push_back(polynomial);
   }
+  return result;
 
   //TODO!!! temporary
 //  std::cout << best_pair.front().transpose() << std::endl;
 //  std::cout << best_pair.back().transpose() << std::endl;
 
-//  auto lines = {best_main_pair.at(0), best_main_pair.at(1),
-//                best_left_segment_pair.at(0), best_left_segment_pair.at(1),
-//                best_right_segment_pair.at(0), best_right_segment_pair.at(1)
-//               };
-//  for (const auto& line : lines) {
-//    Eigen::Vector2f point{0, -line.second(2) / line.second(1)};
-//    float angle = std::atan2(main_direction.y, main_direction.x);
-//    Eigen::Matrix2f rotation_matrix;
-//    const float angle_sin = std::sin(angle);
-//    const float angle_cos = std::cos(angle);
-//    rotation_matrix << angle_cos, -angle_sin,
-//                      angle_sin, angle_cos;
+  auto lines = {best_main_pair.at(0), best_main_pair.at(1),
+                best_left_segment_pair.at(0), best_left_segment_pair.at(1),
+                best_right_segment_pair.at(0), best_right_segment_pair.at(1)
+               };
+  for (const auto& line : lines) {
+    Eigen::Vector2f point{0, -line.second(2) / line.second(1)};
+    float angle = std::atan2(main_direction.y, main_direction.x);
+    Eigen::Matrix2f rotation_matrix;
+    const float angle_sin = std::sin(angle);
+    const float angle_cos = std::cos(angle);
+    rotation_matrix << angle_cos, -angle_sin,
+                      angle_sin, angle_cos;
 
-//    Eigen::Vector2f point2 = rotation_matrix * point;
-//    Eigen::Vector2f vector_normal2 = rotation_matrix * line.second.topRows<2>();
-//    float c2 = -point2.dot(vector_normal2);
+    Eigen::Vector2f point2 = rotation_matrix * point;
+    Eigen::Vector2f vector_normal2 = rotation_matrix * line.second.topRows<2>();
+    float c2 = -point2.dot(vector_normal2);
 
-//    WeightedPolynomial polynomial;
-//    polynomial.coef2 = - vector_normal2(0) / vector_normal2(1);
-//    polynomial.coef3 = - c2 / vector_normal2(1);
-//    result.push_back(polynomial);
-//    result.push_back(polynomial);
-//  }
+    Polynomial polynomial;
+    polynomial.coef2 = - vector_normal2(0) / vector_normal2(1);
+    polynomial.coef3 = - c2 / vector_normal2(1);
+    result.push_back(polynomial);
+    result.push_back(polynomial);
+  }
   return result;
   //TODO!!! temporary
 }
