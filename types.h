@@ -7,10 +7,10 @@ constexpr inline float square(float val) { return val * val; }
 
 struct PlainPointXYZI
 {
-  float x{};
-  float y{};
-  float z{};
-  float intensity{};
+  float x;
+  float y;
+  float z;
+  float intensity;
 };
 
 using PointsVector = std::vector<PlainPointXYZI>;

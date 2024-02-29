@@ -140,13 +140,15 @@ auto create_polynomials_representation(const pcl::PointCloud<pcl::PointXYZI>::Pt
   for (const auto& polynomial : polynomials) {
     auto curve{boost::make_shared<pcl::PointCloud<pcl::PointXYZ>>()};
     // Generate points along the polynomial curve
-    for (float x = cloud_min_point.x; x <= cloud_max_point.x; x += X_STEP) {
+    float x =cloud_min_point.x;
+    while (x <= cloud_max_point.x) {
       const auto x_square = square(x);
       const auto a = polynomial.coef0;
       const auto b = polynomial.coef1;
       const auto c = polynomial.coef2;
       const auto d = polynomial.coef3;
       float y = a * x_square * x + b * x_square + c * x + d; // Calculate P(x)
+      x += X_STEP;
       curve->points.emplace_back(x, y, 0); // Add point to the curve
     }
     curves.emplace_back(std::move(curve));

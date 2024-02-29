@@ -307,7 +307,9 @@ PointCloudSegments get_additional_left_right_segments(const Eigen::MatrixXf& mat
     for (int i{0}; i < matrix.rows(); ++i) {
       const auto& point = matrix.row(i);
       if (comparer(point.x(), x_start)) { // point.x() < x_start for left part and point.x() > x_start for right part
-        const auto min_max_y = std::minmax(main_line.get_y(point.x()), segment_line.get_y(point.x()));
+        const float y_main_line = main_line.get_y(point.x());
+        const float y_segment_line = segment_line.get_y(point.x());
+        const auto min_max_y = std::minmax(y_main_line, y_segment_line);
         if (point.y() > min_max_y.first && point.y() <= min_max_y.second) {
           if (segment_id == LeftRightSegment::Left && point.x() < x_middle) {
             indices.push_back(i);
