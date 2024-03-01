@@ -480,6 +480,7 @@ Eigen::Vector4f approxymate_points_by_polinomials(const Eigen::MatrixXf& points)
   return coefficients;
 }
 
+
 }
 
 namespace processing_logic {

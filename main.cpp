@@ -33,7 +33,31 @@ constexpr int MAX_POINTS_PER_CLUSTER2 = 250;
 
 constexpr float METALCUSTER_DISTANCE = 15.f;
 
+constexpr float LINE_VISUALIZATION_RADIUS = 40.f;
+
 namespace {
+
+PointsMap read_point_cloud(const fs::path& point_cloud_path)
+{
+  PointsMap points_channels_map{};
+  std::ifstream point_cloud_file{point_cloud_path, std::ios::in | std::ios::binary};
+  while (point_cloud_file) {
+    PlainPointXYZI point;
+    point_cloud_file.read(reinterpret_cast<char*>(&point.x), sizeof (point.x));
+    point_cloud_file.read(reinterpret_cast<char*>(&point.y), sizeof (point.y));
+    point_cloud_file.read(reinterpret_cast<char*>(&point.z), sizeof (point.z));
+    point_cloud_file.read(reinterpret_cast<char*>(&point.intensity), sizeof (point.intensity));
+    float channel;
+    point_cloud_file.read(reinterpret_cast<char*>(&channel), sizeof (channel));
+
+    if (point_cloud_file.gcount() > 0)
+    {
+      points_channels_map[static_cast<int>(channel)].push_back(point);
+    }
+  }
+  return points_channels_map;
+}
+
 void save_polynomyals(const fs::path& save_path, const PolynomialsVector& polynomials)
 {
   std::ofstream output_file{save_path};
@@ -45,6 +69,7 @@ void save_polynomyals(const fs::path& save_path, const PolynomialsVector& polyno
     output_file << iter->coef0 << ';' << iter->coef1 << ';' << iter->coef2 << ';' << iter->coef3;
   }
 }
+
 }
 
 int main(int argc, char* argv[])
@@ -69,9 +94,9 @@ int main(int argc, char* argv[])
     return EXIT_FAILURE;
   }
 
-  vis_utils::Visualizer visualizer_main;
-  vis_utils::Visualizer visualizer_preprocessed_for_pca;
-  vis_utils::Visualizer visualizer_filtered;
+  vis_utils::Visualizer visualizer_main{LINE_VISUALIZATION_RADIUS};
+  vis_utils::Visualizer visualizer_preprocessed_for_pca{LINE_VISUALIZATION_RADIUS}; //TODO!!! remove
+  vis_utils::Visualizer visualizer_filtered{LINE_VISUALIZATION_RADIUS}; //TODO!!! remove
   for (auto const& point_cloud_file_entry : fs::directory_iterator{data_dir})
   {
     const auto point_cloud_path = point_cloud_file_entry.path();
@@ -92,24 +117,7 @@ int main(int argc, char* argv[])
 
 
     // Reading all points into a map
-    PointsMap points_channels_map{};
-    {
-      std::fstream point_cloud_file{point_cloud_path, std::ios::in | std::ios::binary};
-      while (point_cloud_file) {
-        PlainPointXYZI point;
-        point_cloud_file.read(reinterpret_cast<char*>(&point.x), sizeof (point.x));
-        point_cloud_file.read(reinterpret_cast<char*>(&point.y), sizeof (point.y));
-        point_cloud_file.read(reinterpret_cast<char*>(&point.z), sizeof (point.z));
-        point_cloud_file.read(reinterpret_cast<char*>(&point.intensity), sizeof (point.intensity));
-        float channel;
-        point_cloud_file.read(reinterpret_cast<char*>(&channel), sizeof (channel));
-
-        if (point_cloud_file.gcount() > 0)
-        {
-          points_channels_map[static_cast<int>(channel)].push_back(point);
-        }
-      }
-    }
+    const auto points_channels_map = read_point_cloud(point_cloud_path);
 
     PointsVector all_points;
     all_points.reserve(plointcloud_size / POINT_SIZE);
@@ -143,7 +151,7 @@ int main(int argc, char* argv[])
     auto all_clusters = processing_logic::cluster(fused_filtered_points, DISTANCE_IN_CLUSTER2, MIN_POINTS_PER_CLUSTER2,
                                                   MAX_POINTS_PER_CLUSTER2);
 
-    auto fused_filtered_center_mass_points = processing_logic::prepare_cloud_for_pca({all_clusters});
+    auto fused_filtered_center_mass_points = processing_logic::get_reduced_point_cloud(all_clusters);
 
     {
       // Remove outlier regions

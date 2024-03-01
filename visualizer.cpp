@@ -7,9 +7,7 @@
 
 namespace {
 
-// TODO!!! remove boost::make_shared
-
-constexpr double CAMERA_HEIGHT = 75.;
+constexpr double CAMERA_HEIGHT = 60.;
 
 struct Box
 {
@@ -54,14 +52,23 @@ void clear(pcl::visualization::PCLVisualizer& viewer)
   viewer.removeAllShapes();
 }
 
-void visualize(pcl::visualization::PCLVisualizer& viewer, const pcl::PointCloud<pcl::PointXYZI>::Ptr& cloud)
-{
+void visualize(pcl::visualization::PCLVisualizer& viewer,
+               const pcl::PointCloud<pcl::PointXYZI>::Ptr& cloud,
+               const std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr>& curves)
+{  
+  constexpr Color LINE_COLOR{255.f, 0.f, 255.f};
   clear(viewer);
   pcl::visualization::PointCloudColorHandlerGenericField<pcl::PointXYZI> intensity_distribution{cloud, "intensity"};
   viewer.addPointCloud<pcl::PointXYZI>(cloud, intensity_distribution, "Cloud");
+
+  for (std::size_t i{0}; i < curves.size(); ++i) {
+    pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> curve_color(curves.at(i), LINE_COLOR.r, LINE_COLOR.g, LINE_COLOR.b); // Red color
+    viewer.addPointCloud<pcl::PointXYZ>(curves.at(i), curve_color, "PolynomialCurve" + std::to_string(i));
+  }
   viewer.spin();
 }
 
+//TODO!!! remove
 void visualize(pcl::visualization::PCLVisualizer& viewer,
                const pcl::PointCloud<pcl::PointXYZI>::Ptr& cloud,
                const std::vector<Box>& boxes,
@@ -88,6 +95,7 @@ float process_intensity(float original_intensity)
   return std::clamp(original_intensity * 10.f, 0.f, 255.f);
 }
 
+//TODO!!! remove
 Box get_bounding_box(const pcl::PointCloud<pcl::PointXYZI>::Ptr& cluster)
 {
   // Find bounding box for one of the clusters
@@ -117,7 +125,7 @@ pcl::PointXYZI convert_to_pcl(const PlainPointXYZI& input_point)
 
 pcl::PointCloud<pcl::PointXYZI>::Ptr convert_to_cloud(const PointsVector& pointcloud_data)
 {
-  auto cloud{boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>()};
+  pcl::PointCloud<pcl::PointXYZI>::Ptr cloud{new pcl::PointCloud<pcl::PointXYZI>};
 
   cloud->reserve(pointcloud_data.size());
   for (auto point_iter = pointcloud_data.begin(); point_iter != pointcloud_data.end(); ++point_iter) {
@@ -126,22 +134,21 @@ pcl::PointCloud<pcl::PointXYZI>::Ptr convert_to_cloud(const PointsVector& pointc
   return cloud;
 }
 
-auto create_polynomials_representation(const pcl::PointCloud<pcl::PointXYZI>::Ptr& cloud,
-                                       const PolynomialsVector& polynomials)
+auto create_polynomials_representation(const PolynomialsVector& polynomials,
+                                       float line_visualization_radius)
 {
   constexpr float X_STEP = 0.01f;
 
-  pcl::PointXYZI cloud_min_point, cloud_max_point;
-  pcl::getMinMax3D(*cloud, cloud_min_point, cloud_max_point);
+  const float squared_radius = square(line_visualization_radius);
 
   std::vector<pcl::PointCloud<pcl::PointXYZ>::Ptr> curves;
   curves.reserve(polynomials.size());
 
   for (const auto& polynomial : polynomials) {
-    auto curve{boost::make_shared<pcl::PointCloud<pcl::PointXYZ>>()};
+    pcl::PointCloud<pcl::PointXYZ>::Ptr curve{new pcl::PointCloud<pcl::PointXYZ>};
     // Generate points along the polynomial curve
-    float x =cloud_min_point.x;
-    while (x <= cloud_max_point.x) {
+    float x = -line_visualization_radius;
+    while (x <= line_visualization_radius) {
       const auto x_square = square(x);
       const auto a = polynomial.coef0;
       const auto b = polynomial.coef1;
@@ -149,57 +156,40 @@ auto create_polynomials_representation(const pcl::PointCloud<pcl::PointXYZI>::Pt
       const auto d = polynomial.coef3;
       float y = a * x_square * x + b * x_square + c * x + d; // Calculate P(x)
       x += X_STEP;
-      curve->points.emplace_back(x, y, 0); // Add point to the curve
+      if (square(x) + square(y) < squared_radius) {
+        curve->points.emplace_back(x, y, 0); // Add point to the curve
+      }
     }
     curves.emplace_back(std::move(curve));
   }
   return curves;
-
 }
 
 }
 
 namespace vis_utils {
 
-Visualizer::Visualizer()
-  : viewer_{std::make_unique<pcl::visualization::PCLVisualizer>("", false)}
+class ViewerImpl : public pcl::visualization::PCLVisualizer {
+  using pcl::visualization::PCLVisualizer::PCLVisualizer;
+};
+
+Visualizer::Visualizer(float line_visualization_radius)
+  : viewer_{std::make_unique<ViewerImpl>("", false)}
+  , line_visualization_radius_{line_visualization_radius}
 {
 }
 
 Visualizer::~Visualizer() = default;
 
-void Visualizer::visualize_cloud(const std::vector<float>& pointcloud_data, std::size_t point_size, const std::string& name)
-{
-  if (point_size < 3) {
-    throw std::invalid_argument{"Point size should be at least 3"};
-  }
-
-  auto cloud{boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>()};
-
-  cloud->reserve(pointcloud_data.size() / point_size);
-  for (auto point_iter = pointcloud_data.begin(); point_iter != pointcloud_data.end(); point_iter += point_size) {
-    pcl::PointXYZI point;
-    point.x = *(point_iter + 0);
-    point.y = *(point_iter + 1);
-    point.z = *(point_iter + 2);
-    if (point_size >= 4) {
-      point.intensity = process_intensity(*(point_iter + 3));
-    } else {
-      point.intensity = 0;
-    }
-    cloud->push_back(point);
-  }
-  init_if_needed_();
-  viewer_->setWindowName(name);
-  visualize(*viewer_, cloud);
-}
-
-void Visualizer::visualize_cloud(const PointsVector& pointcloud_data, const std::string& name)
+void Visualizer::visualize_cloud(const PointsVector& pointcloud_data,
+                                 const PolynomialsVector& polynomials,
+                                 const std::string& name)
 {
   auto cloud = convert_to_cloud(pointcloud_data);
   init_if_needed_();
+  const auto curves = create_polynomials_representation(polynomials, line_visualization_radius_);
   viewer_->setWindowName(name);
-  visualize(*viewer_, cloud);
+  visualize(*viewer_, cloud, curves);
 }
 
 void Visualizer::visualize_clusters(const std::vector<PointsVector>& clusters,
@@ -207,13 +197,13 @@ void Visualizer::visualize_clusters(const std::vector<PointsVector>& clusters,
                                     const PolynomialsVector& polynomials,
                                     const std::string& name)
 {
-  auto cloud{boost::make_shared<pcl::PointCloud<pcl::PointXYZI>>()};
+  pcl::PointCloud<pcl::PointXYZI>::Ptr cloud{new pcl::PointCloud<pcl::PointXYZI>};
   for (const auto& beam: all_points) {
     const auto new_cloud = convert_to_cloud(beam);
     *cloud += *new_cloud;
   }
 
-  const auto curves = create_polynomials_representation(cloud, polynomials);
+  const auto curves = create_polynomials_representation(polynomials, line_visualization_radius_);
 
   std::vector<Box> boxes;
   boxes.reserve(clusters.size());

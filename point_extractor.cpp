@@ -12,17 +12,6 @@ constexpr float MIN_DIV = 1.f;
 constexpr float ROI_RADIUS = 55.f;
 constexpr float HEIGHT_TOLERANCE = 1.5f;
 
-constexpr bool USE_MEDIAN = true;
-
-float get_mean_intensity(const PointsVector& points)
-{
-  float sum{0.f};
-  for (const auto& point : points) {
-    sum += point.intensity;
-  }
-  return sum / points.size();
-}
-
 float get_median_intensity(PointsVector points)
 {
   auto m = points.begin() + points.size() / 2;
@@ -32,15 +21,6 @@ float get_median_intensity(PointsVector points)
   );
   return points[points.size() / 2].intensity;
 }
-
-//float get_mean_height(const PointsVector& points)
-//{
-//  float sum{0.f};
-//  for (const auto& point : points) {
-//    sum += point.z;
-//  }
-//  return sum / points.size();
-//}
 
 float get_median_height(PointsVector points)
 {
@@ -59,7 +39,7 @@ float get_deviation(const PointsVector& points, float mean)
     div += square(point.intensity - mean);
   }
   if (!points.empty()) {
-    div /= points.size();
+    div /= static_cast<float>(points.size());
     div = std::sqrt(div);
   }
   return div;
@@ -91,10 +71,10 @@ namespace processing_logic {
 PointsVector extract_intensity_outliers(const PointsVector& points)
 {
   PointsVector filtered;
-  const auto mean = USE_MEDIAN ? get_median_intensity(points) : get_mean_intensity(points);
-  const auto deviation = std::max(get_deviation(points, mean), MIN_DIV);
+  const auto median = get_median_intensity(points);
+  const auto deviation = std::max(get_deviation(points, median), MIN_DIV);
   for (const auto& point : points) {
-    if (point.intensity - mean > EXTRACTION_MULTIPLIER * deviation) {
+    if (point.intensity - median > EXTRACTION_MULTIPLIER * deviation) {
       filtered.push_back(point);
     }
   }
@@ -114,19 +94,17 @@ PointsVector fuse_points(const std::vector<PointsVector>& points_vectors)
   return fused;
 }
 
-PointsVector prepare_cloud_for_pca(const ChanneledClusteredPointClouds& clouds)
+PointsVector get_reduced_point_cloud(const std::vector<PointsVector>& clusters)
 {
   constexpr float ROI_RADIUS_SQUARED = square(ROI_RADIUS);
   PointsVector clustered_cloud;
 
   // Replace points by cluster centers and filter by ROI
   // Note: this part may be parallelized in the future
-  for (const auto& beam: clouds) {
-    for (const auto& cluster : beam) {
-      const auto mass_center = get_mass_center(cluster);
-      if (square(mass_center.x) + square(mass_center.y) < ROI_RADIUS_SQUARED) {
-        clustered_cloud.push_back(mass_center);
-      }
+  for (const auto& cluster : clusters) {
+    const auto mass_center = get_mass_center(cluster);
+    if (square(mass_center.x) + square(mass_center.y) < ROI_RADIUS_SQUARED) {
+      clustered_cloud.push_back(mass_center);
     }
   }
 
