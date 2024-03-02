@@ -26,13 +26,6 @@ static_assert (sizeof (float) == 4, "Float doesn't consist of 4 bytes");
 
 constexpr std::size_t POINT_SIZE = 5u;
 
-// PARAMETERS
-constexpr float DISTANCE_IN_CLUSTER = 0.4f;
-constexpr int MIN_POINTS_PER_CLUSTER = 1;
-constexpr int MAX_POINTS_PER_CLUSTER = 250;
-
-constexpr float METACLUSTER_DISTANCE = 15.f;
-
 constexpr float LINE_VISUALIZATION_RADIUS = 40.f;
 
 namespace {
@@ -127,38 +120,28 @@ int main(int argc, char* argv[])
     }
     assert(all_points.size() == plointcloud_size / POINT_SIZE);
 
-    // Filter out possible lane points by intensity
-    std::vector<PointsVector> possible_lane_points;
-    possible_lane_points.reserve(points_channels_map.size());
+    // Filter out possible marking line points by intensity
+    std::vector<PointsVector> possible_marking_line_points;
+    possible_marking_line_points.reserve(points_channels_map.size());
     for(auto channel_iter = points_channels_map.rbegin(); channel_iter != points_channels_map.rend(); ++channel_iter) {
       auto outliers = processing_logic::extract_intensity_outliers(channel_iter->second);
-      possible_lane_points.push_back(std::move(outliers));
+      possible_marking_line_points.push_back(std::move(outliers));
     }
-    const auto fused_filtered_points = processing_logic::fuse_points(possible_lane_points);
+    const auto fused_possible_marking_line_points = processing_logic::fuse_points(possible_marking_line_points);
 
-    // Cluster possible lane points
-    auto all_clusters = processing_logic::cluster(fused_filtered_points, DISTANCE_IN_CLUSTER, MIN_POINTS_PER_CLUSTER,
-                                                  MAX_POINTS_PER_CLUSTER);
+    // Cluster possible marking lines points
+    auto all_clusters = processing_logic::cluster_marking_line_points(fused_possible_marking_line_points);
     // Replace clusters by their mass centers
-    auto fused_filtered_center_mass_points = processing_logic::get_reduced_point_cloud(all_clusters);
+    auto possible_marking_lines_points_mass_centers = processing_logic::get_reduced_point_cloud(all_clusters);
 
     // Remove outlier regions by second clustering
-    auto meta_clusters = processing_logic::cluster(fused_filtered_center_mass_points, METACLUSTER_DISTANCE, 1,
-                                                   std::numeric_limits<int>::max(),
-                                                   std::numeric_limits<float>::infinity());
-    std::size_t max_cluster_id{0};
-    for (std::size_t i{1}; i < meta_clusters.size(); ++i) {
-      if (meta_clusters.at(i).size() > meta_clusters.at(max_cluster_id).size()) {
-        max_cluster_id = i;
-      }
-    }
-    fused_filtered_center_mass_points = std::move(meta_clusters.at(max_cluster_id));
+    possible_marking_lines_points_mass_centers = processing_logic::find_largest_meta_cluster(possible_marking_lines_points_mass_centers);
 
     // Find main direction using PCA
-    const auto main_direction = processing_logic::get_main_direction(fused_filtered_center_mass_points);
+    const auto main_direction = processing_logic::get_main_direction(possible_marking_lines_points_mass_centers);
 
     // Detect polynomials
-    const auto polynomials = processing_logic::find_lines(fused_filtered_center_mass_points, main_direction);
+    const auto polynomials = processing_logic::find_lines(possible_marking_lines_points_mass_centers, main_direction);
 
     // Save the result to a text file
     save_polynomyals(output_dir / point_cloud_path.stem().concat(".txt"), polynomials);

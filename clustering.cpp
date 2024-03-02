@@ -4,33 +4,20 @@
 
 #include <cmath>
 #include <functional>
+#include <limits>
 
 namespace {
 
-bool fits_width(PointsVector& cluster, float squared_max_cluster_width)
-{
-  if (std::isinf(squared_max_cluster_width)) {
-    return true;
-  }
-  for (const auto& point : cluster) {
-    for (const auto& other_point : cluster) {
-      const float squared_width = square(point.x - other_point.x) + square(point.y - other_point.y);
-      if (squared_width > squared_max_cluster_width) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
+// PARAMETERS
+constexpr float DISTANCE_IN_CLUSTER = 0.4f;
+constexpr int MIN_POINTS_PER_CLUSTER = 1;
+constexpr int MAX_POINTS_PER_CLUSTER = 250;
 
-}
-
-namespace processing_logic {
+constexpr float METACLUSTER_DISTANCE = 15.f;
 
 std::vector<PointsVector> cluster(const PointsVector& points, float cluster_tolerance,
-                                  int min_size, int max_size, float max_cluster_width)
+                                  int min_size, int max_size)
 {
-  const float squared_max_cluster_width = square(max_cluster_width);
   KdTree tree{};
   // May be this part can be improved - add balancing to the filled tree
   for (std::size_t i{0}; i < points.size(); ++i)
@@ -72,13 +59,32 @@ std::vector<PointsVector> cluster(const PointsVector& points, float cluster_tole
         for (int new_cluster_id: new_cluster_ids) {
           new_cluster.push_back(points.at(static_cast<std::size_t>(new_cluster_id)));
         }
-        if (fits_width(new_cluster, squared_max_cluster_width)) {
-          clusters.emplace_back(std::move(new_cluster));
-        }
+        clusters.emplace_back(std::move(new_cluster));
       }
     }
   }
   return clusters;
+}
+
+}
+
+namespace processing_logic {
+
+std::vector<PointsVector> cluster_marking_line_points(const PointsVector& points)
+{
+  return cluster(points, DISTANCE_IN_CLUSTER, MIN_POINTS_PER_CLUSTER, MAX_POINTS_PER_CLUSTER);
+}
+
+PointsVector find_largest_meta_cluster(const PointsVector& points)
+{
+  auto meta_clusters = cluster(points, METACLUSTER_DISTANCE, 1, std::numeric_limits<int>::max());
+  std::size_t max_cluster_id{0};
+  for (std::size_t i{1}; i < meta_clusters.size(); ++i) {
+    if (meta_clusters.at(i).size() > meta_clusters.at(max_cluster_id).size()) {
+      max_cluster_id = i;
+    }
+  }
+  return meta_clusters.at(max_cluster_id);
 }
 
 }

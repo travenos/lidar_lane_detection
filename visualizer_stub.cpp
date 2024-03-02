@@ -1,7 +1,8 @@
-#include "visualizer.h"
+/** This is a stub file, which is used in builds where visualization is turned off
+ * (-DWITH_VISUALIZATION=OFF)
+ */
 
-// This is a stub file, which is used in builds where visualization is turned off
-// (-DWITH_VISUALIZATION=OFF)
+#include "visualizer.h"
 
 namespace vis_utils {
 
