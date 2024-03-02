@@ -19,9 +19,4 @@ void Visualizer::visualize_cloud(const PointsVector&, const PolynomialsVector&, 
 {
 }
 
-void Visualizer::visualize_clusters(const std::vector<PointsVector>&, const std::vector<PointsVector>&,
-                          const PolynomialsVector&, const std::string&) //TODO!!! remove
-{
-}
-
 }

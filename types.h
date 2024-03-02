@@ -15,20 +15,18 @@ struct PlainPointXYZI
 
 using PointsVector = std::vector<PlainPointXYZI>;
 using PointsMap = std::map<int, PointsVector>;
-using ClusteredPointClouds = std::vector<PointsVector>;
-using ChanneledClusteredPointClouds = std::vector<ClusteredPointClouds>; // TODO!!! May be remove
 
 struct Polynomial
 {
-  float coef0{};
-  float coef1{};
-  float coef2{};
-  float coef3{};
+  float coef0;
+  float coef1;
+  float coef2;
+  float coef3;
 };
 
 using PolynomialsVector = std::vector<Polynomial>;
 
 struct Vec2D {
-  float x{};
-  float y{};
+  float x;
+  float y;
 };

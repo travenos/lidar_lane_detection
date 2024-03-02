@@ -85,14 +85,14 @@ void search(const PointCoords& target, float distance_tol, std::size_t k, const 
     ids.push_back(node->id);
   }
 
-  const std::size_t nextK = (k + 1) % target.size();
+  const std::size_t next_k = (k + 1) % target.size();
   if (target[k] - distance_tol < node->point[k])
   {
-    ::search(target, distance_tol, nextK, node->left, ids);
+    ::search(target, distance_tol, next_k, node->left, ids);
   }
   if (target[k] + distance_tol > node->point[k])
   {
-    ::search(target, distance_tol, nextK, node->right, ids);
+    ::search(target, distance_tol, next_k, node->right, ids);
   }
 }
 

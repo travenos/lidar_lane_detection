@@ -67,7 +67,6 @@ PlainPointXYZI get_mass_center(const PointsVector& points)
 
 namespace processing_logic {
 
-// TODO!!! take map as argument, add info about parallelization
 PointsVector extract_intensity_outliers(const PointsVector& points)
 {
   PointsVector filtered;

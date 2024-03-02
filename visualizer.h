@@ -16,9 +16,9 @@ public:
   explicit Visualizer(float line_visualization_radius);
   ~Visualizer();
 
-  void visualize_cloud(const PointsVector& pointcloud_data, const PolynomialsVector& polynomials, const std::string& name);
-  void visualize_clusters(const std::vector<PointsVector>& clusters, const std::vector<PointsVector>& all_points,
-                          const PolynomialsVector& polynomials, const std::string& name); //TODO!!! remove
+  void visualize_cloud(const PointsVector& pointcloud_data,
+                       const PolynomialsVector& polynomials,
+                       const std::string& name);
 
 private:
   void init_if_needed_();

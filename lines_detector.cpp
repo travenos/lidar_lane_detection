@@ -60,7 +60,6 @@ struct Line {
 using PointCloudSegments = std::array<Eigen::MatrixXf, LeftRightSegment::Size>;
 using WeightedLinesSet = std::array<std::list<std::pair<float, Eigen::Vector3f>>, UpDownSegment::Size>;
 using WeightedLinesPair = std::array<std::pair<float, Eigen::Vector3f>, UpDownSegment::Size>;
-// TODO!!! add information about possible parallelization
 
 template <typename T>
 class PriorityList final {
@@ -227,6 +226,7 @@ auto find_best_lines(const PointCloudSegments& point_cloud_segments)
   const auto& left_part = point_cloud_segments[LeftRightSegment::Left];
   // Make all possible pairs between points from letf and right.
   // No need to ese RANSAC because of fiew points number.
+  // Note: this process can be parallelized
   for (int right_point_id{0}; right_point_id < right_part.rows(); ++right_point_id) {
     const auto& right_point = right_part.row(right_point_id);
     for (int left_point_id{0}; left_point_id < left_part.rows(); ++left_point_id) {
@@ -603,36 +603,6 @@ PolynomialsVector find_lines(const PointsVector& cloud, const Vec2D& main_direct
     result.push_back(polynomial);
   }
   return result;
-
-  //TODO!!! temporary
-//  std::cout << best_pair.front().transpose() << std::endl;
-//  std::cout << best_pair.back().transpose() << std::endl;
-
-  auto lines = {best_main_pair.at(0), best_main_pair.at(1),
-                best_left_segment_pair.at(0), best_left_segment_pair.at(1),
-                best_right_segment_pair.at(0), best_right_segment_pair.at(1)
-               };
-  for (const auto& line : lines) {
-    Eigen::Vector2f point{0, -line.second(2) / line.second(1)};
-    float angle = std::atan2(main_direction.y, main_direction.x);
-    Eigen::Matrix2f rotation_matrix;
-    const float angle_sin = std::sin(angle);
-    const float angle_cos = std::cos(angle);
-    rotation_matrix << angle_cos, -angle_sin,
-                      angle_sin, angle_cos;
-
-    Eigen::Vector2f point2 = rotation_matrix * point;
-    Eigen::Vector2f vector_normal2 = rotation_matrix * line.second.topRows<2>();
-    float c2 = -point2.dot(vector_normal2);
-
-    Polynomial polynomial;
-    polynomial.coef2 = - vector_normal2(0) / vector_normal2(1);
-    polynomial.coef3 = - c2 / vector_normal2(1);
-    result.push_back(polynomial);
-    result.push_back(polynomial);
-  }
-  return result;
-  //TODO!!! temporary
 }
 
 }

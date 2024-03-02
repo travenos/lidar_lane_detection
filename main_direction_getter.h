@@ -4,7 +4,6 @@
 
 namespace processing_logic {
 
-
 Vec2D get_main_direction(const PointsVector& points);
 
 }
