@@ -114,7 +114,8 @@ For simplification of calculations at this stage, it is assumed that all points 
   region are discarded, and lines from the main region are used instead.
 ### 3.2.9. Rotating the Set of Points Located Along the Found Lines to Return Them to the Original Orientation of the Road.
 ### 3.2.10. Approximating the Set of Points Located Along the Lines with a Third-Order Polynomial.
-- Points located near the lines in corresponding segments are selected
+- Points lying on straight lines from various segments are generated.
+  For the main segment, points are generated in the middle, for additional segments - points closer to the edges of the point cloud.
 - The points are approximated with a third-order polynomial using the least squares metho
 
 ![Screenshot 5.1](images/5.1.png)
