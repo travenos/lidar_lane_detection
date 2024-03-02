@@ -1,14 +1,15 @@
-# 1. Сборка
-Необходим компилятор, поддерживающий C++17 и система сборки CMake.  
-Для сборки необходима библиотека Eigen 3. На Ubuntu её можно установить, выполнив
+# 1. Building
+A compiler that supports C++17 and the CMake build system are required.  
+The Eigen 3 library is needed for building. On Ubuntu, it can be installed by executing:
 ```
 sudo apt install libeigen3-dev
 ```
-Для визуализации облака точек и результата используется библиотека PCL. В части, отвечающей за логику, она не применяется, её установка необходима только при сборке проекта с включённой визуализацией. По умолчанию визуализация включена.
+The PCL library is used for point cloud visualization and result visualization. It is not applied in the logic part;
+its installation is only necessary when building the project with visualization enabled. By default, visualization is enabled.
 ```
 sudo apt install libpcl-dev
 ```
-Сборка с включённой визуализацией (необходима библиотека PCL):
+Building with visualization enabled (PCL library required):
 ```
 cd cpp_lane_detector
 mkdir build
@@ -16,7 +17,7 @@ cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 cmake --build . --target all -- -j 12
 ```
-Для сборки без визуализации (библиотека PCL не нужна) необходимо передать в CMake флаг `-DWITH_VISUALIZATION=OFF`:
+To build without visualization (PCL library not needed), pass the `-DWITH_VISUALIZATION=OFF` flag to CMake:
 ```
 cd cpp_lane_detector
 mkdir build
@@ -24,98 +25,107 @@ cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release -DWITH_VISUALIZATION=OFF
 cmake --build . --target all -- -j 12
 ```
-# 2. Запуск
+# 2. Launch
 ```
 ./cpp_lane_detector [path to a directory with point clouds] [path to an output directory to store results]
 ```
-Программа последовательно обработает каждый файл из каталога с облаком точек и сохранит коэффициенты полиномов для каждого из них в текстовый файл в каталог для текстовых файлов с результатами.  
-Если программа была собрана с включённой визуализацией, после обработки каждого файла на экран будет выводиться окно с облаком точек и изображением найденного полинома. После закрытия окна будет производиться обработка следующего файла и снова показываться окно с его визуализацией.
-# 3. Алгоритм
-## 3.1. Предобработка облака точек
-Перед поиском линий осуществляется предобработка облака точек с целью уменьшить его размерность и оставить только те точки, которые могут относиться к линиям разметки.
-### 3.1.1. Выбор точек, которые могут относиться к линиям дорожной разметки
-- Для каждого луча лидара осуществляется поиск медианной интенсивности и среднеквадратического отклонения интенсивности от медианы.
-- Из каждого луча выбираются только те точки, у которых интенсивность превышает медиану на определённый порог, пропорциональный среднеквадратическому отклонению интенсивности в данном луче.  
+The program will sequentially process each file from the point cloud directory, saving polynomial coefficients for each
+into a text file in the results directory.  
+If the program was built with visualization, it displays a window with the point cloud and polynomial after processing each file. 
+Closing the window processes and visualizes the next file.
+
+# 3. Algorithm
+## 3.1. Point Cloud Preprocessing
+Before detecting lines, the point cloud undergoes preprocessing to reduce its dimensionality and keep only those points that may relate to road markings.
+
+### 3.1.1. Selecting Points Relating to Road Markings
+- For each LiDAR ray, the median intensity and the standard deviation from the median intensity are calculated.
+- From each ray, only those points are selected whose intensity exceeds the median by a certain threshold proportional to the standard deviation of intensity in that ray.
 
 ![Screenshot 1](images/1.png) 
-### 3.1.2. Кластеризация точек, относящихся к дорожной разметке
-- Для выбранных точек на предыдущем этапе осуществляется кластеризация, используется Euclidian Clustering.
-  Euclidean clustering algorithmically groups points in a point cloud into clusters based on their Euclidean distance, iteratively expanding clusters by including neighboring points within a specified distance threshold. This approach relies on spatial proximity
+### 3.1.2. Clustering Points Related to Road Markings
+- For the points selected in the previous stage, clustering is performed using Euclidean Clustering.
+  Euclidean clustering algorithmically groups points in a point cloud into clusters based on their Euclidean distance, iteratively expanding clusters
+  by including neighboring points within a specified distance threshold. This approach relies on spatial proximity
   without requiring prior knowledge of cluster numbers, emphasizing an iterative, distance-based grouping mechanism for data segmentation.
-- Для упрощения сложности поиска ближайших соседей облако точек помещается в структуру данных [k-d tree](https://en.wikipedia.org/wiki/K-d_tree)
-- Предполагаются, что кластеры, содержащие точки, относящиеся к линии разметки, содержат относительно немного точек.
-  Кластеры, содержащие слишком много точек, отбрасываются
+- To simplify the complexity of finding nearest neighbors, the point cloud is placed into a [k-d tree](https://en.wikipedia.org/wiki/K-d_tree) data structure.
+- It is assumed that clusters containing points related to road markings contain relatively few points.
+  Clusters containing too many points are discarded.
 
 ![Screenshot 2](images/2.png) 
-### 3.1.3. Замена точек на центры масс найденных кластеров
-- Для уменьшения размерности каждый кластер заменяется на одну точку - центр масс
+### 3.1.3. Replacing Points with Cluster Centroids
+- To reduce dimensionality, each cluster is replaced with a single point - the centroid.
 
-### 3.1.4. Выбор точек, находящихся только внутри региона интереса
-- Облако точек-центров масс кластеров обрезается по определённому радиусу и определённой высоте
-- Проводится повторная кластеризация с большим расстоянием внутри кластера (порядка 15 метров). Если в результате получается больше одного кластера, выбирается самый большой кластер, а точки из остальных кластеров считаются не релевантными.
+### 3.1.4. Selecting Points Only Within the Region of Interest
+- The cloud of cluster centroid points is trimmed by a specific radius and height
+- Another clustering is performed with a larger distance within the cluster (about 15 meters).
+  If the result contains more than one cluster, the largest cluster is selected, and points from other clusters are considered irrelevant.
 
 ![Screenshot 3](images/3.png) 
-## 3.2. Поиск линий
-Вторым этапом является поиск линий на предобработанном облаке точек.  
-Основу алгоритма составляет разбиение облака точек на несколько регионов интереса, поиск прямых линий в каждом из регионов,
-а затем аппроксимация точек вдоль найденных прямых полиномом третьего порядка.  
-Построение линий осуществляется в верхних и нижних сегментах облака точек, а затем осуществляется поиск наиболее близкой к параллельной пары линий.  
-В данном случае под нижним сегментом понимается набор точек ниже центральной линии (один край полосы),
-а под верхним - набор точек выше неё (другой край полосы).  
+
+## 3.2. Line Detection
+The second stage is line detection on the preprocessed point cloud.  
+The algorithm is based on dividing the point cloud into several regions of interest, searching for straight lines in each region,
+and then approximating the points along the found straight lines with a third-order polynomial.  
+Line construction is carried out in the upper and lower segments of the point cloud, followed by a search for the closest to parallel pair of lines.  
+In this case, the lower segment refers to a set of points below the central line (one edge of the lane),
+and the upper segment refers to a set of points above it (the other edge of the lane). 
 
 ![Scheme 1](images/Regions for lines detection.png) 
 
-С целью упрощения вычислений на данном этапе считается, что все точки приблизительно находятся в плоскости и высота является нулевой.
-### 3.2.1. Нахождение главного направления дороги
-- Для нахождения главного направления дороги применяется [Principal component analysis (PCA)](https://en.wikipedia.org/wiki/Principal_component_analysis)
+For simplification of calculations at this stage, it is assumed that all points are approximately in the plane and the height is zero.
+
+### 3.2.1. Finding the Main Direction of the Road
+- [Principal component analysis (PCA)](https://en.wikipedia.org/wiki/Principal_component_analysis)
+  is used to find the main direction of the road.
 
 ![Screenshot 4](images/4.png)
-### 3.2.2. Поворот облака точек с целью его ориентации вдоль главного направления дороги.
-### 3.2.3. Выбор точек главного региона - около начала координат
-- Главный регион разбивается на верхний и нижний сегменты, а верхний и нижний сегменты разбиваются на левый и правый.
-- Линии ищутся отдельно в верхнем и нижнем регионе между точками, которые берутся из левого и правого регионов.
-### 3.2.4. Осуществление поиска прямых линий в верхнем и нижнем сегментах главного региона
-- В верхних и нижних сегментах перебираются все пары точек, где одна точка лежит в левой половине сегмента, а вторая - в правой.
-- Через отобранные пары точек строятся прямые линии
-- Линии, имеющие слишком большой угол наклона, отбрасываются
-- Линии, проходящие слишком близко или слишком далеко от начала координат, отбрасываются
-- Для каждой прямой считается количество точек, находящихся вблизи неё. Это число определяет score линии.
-- В верхнем и нижнем сегменте отбирается по N линий с самым большим score
-- Т.к. после предобработки каждый из сегментов содержит относительно немного точек, возможно перебрать все их пары
-  (`O(m*n)`). При увеличении числа точек, может потребоваться перейти к методу, основанному на [RANSAC](https://en.wikipedia.org/wiki/Random_sample_consensus).
-### 3.2.5. Выбор двух наиболее подходящих параллельных линий из верхнего и нижнего сегмента главного региона
-- Среди отобранных линий из верхнего и нижнего секторов перебираются все пары
-- Выбирается пара линий, косинус угла между нормалями к которым максимален
-- Отбрасываются линии, находящиеся слишком близко друг к другу (имеющие близкие координаты пересечения с осью Y)
-### 3.2.6. Выбор точек дополнительных регионов - с левого края облака точек и с правого края облака точек
-- Слева и справа от основного региона выбираются точки дополнительного региона
-- Дополнительные регионы являются узкими около начала координат и расширяются по мере удаления от начала координат
-- Дополнительные регионы делятся на под-регионы - сверху и снизу прямых, найденных в основном регионе
-### 3.2.7. Поиск пар прямых линий в дополнительных регионах
-- В каждом из под-регионов ищутся прямые линии, аналогично пункту 3.2.4.
-- Отличительными особенностями является проверка для подбираемых линий на то, чтобы они не образовывали слишком большой угол
-  с соответствующей линией из основного региона, а также, чтобы они пересекали эту линию в окрестности под-региона.
-- Линии верхнего и нижнего под-региона каждого региона объединяются в общий список в соответствии со своими score.
-- В левом и правом дополнительных регионах осуществляется поиск лучших параллельных прямых из верхней и нижней части 
-  в соответствии с шагами из пункта 3.2.5.
-### 3.2.8. Сравнение качества найденных пар прямых в дополнительных регионах с качеством в этих регионах пары линий из главного региона
-- Суммарный score пар прямых из дополнительных регионов сравнивается с суммарным score в этих регионах для прямых из основного
-  региона. Если score прямых из дополнительного региона не превышает в 2 раза score прямых из основного, то прямые из дополнительного
-  региона отбрасываются, вместо них используются прямые из основного региона.
-### 3.2.9. Поворот набора точек, находящихся вдоль найденных прямых, с целью их возвращения в исходную ориентацию дороги.
-### 3.2.10. Аппроксимация набора точек, находящихся вдоль прямых полиномом третьего порядка.
-- Отбираются точки, находящиеся около прямых соответствующих сегментах
-- Точки аппроксимируются полиномом третьего порядка при помощи метода наименьших квадратов
+### 3.2.2. Rotating the Point Cloud to Orient it Along the Main Direction of the Road.
+### 3.2.3. Selecting Points of the Main Region - Near the Origin
+- The main region is divided into upper and lower segments, and the upper and lower segments are divided into left and right.
+- Lines are searched for separately in the upper and lower segment between points taken from the left and right parts.
+### 3.2.4. Conducting the Search for Straight Lines in the Upper and Lower Segments of the Main Region
+- In the upper and lower segments, all pairs of points are iterated through, where one point lies in the left half of the segment, and the second - in the right.
+- Straight lines are constructed through the selected pairs of points.
+- Lines with too much angle are discarded.
+- Lines passing too close or too far from the origin are discarded.
+- For each line, the number of points located near it is calculated. This number determines the line's score.
+- In the upper and lower segment, N lines with the highest score are selected.
+- Since after preprocessing, each of the segments contains relatively few points, it is possible to iterate over all their pairs (`O(m*n)`).
+  With an increase in the number of points, it may be necessary to switch to a method based on [RANSAC](https://en.wikipedia.org/wiki/Random_sample_consensus).
+### 3.2.5. Selecting Two Most Suitable Parallel Lines from the Upper and Lower Segment of the Main Region
+- Among the selected lines from the upper and lower segments, all pairs are iterated through.
+- A pair of lines is selected, the cosine of the angle between the normals to which is maximal.
+- Pairs of lines located too close to each other (having close intersection coordinates with the Y-axis) are discarded.
+### 3.2.6. Selection of Points from Additional Regions - From the Left Edge of the Point Cloud and from the Right Edge of the Point Cloud
+- Points of the additional regions are selected to the left and right of the main region
+- Additional regions are narrow near the origin and expand as they move away from the origin
+- Additional regions are divided into sub-regions - above and below the lines found in the main region
+### 3.2.7. Searching for Pairs of Straight Lines in Additional Regions
+- In each of the sub-regions, straight lines are searched for, similarly to section 3.2.4.
+- Distinctive aspects include checking the selected lines to ensure they do not form too large an angle
+  with the corresponding line from the main region, and that they intersect this line in the vicinity of the sub-region.
+- Lines from the upper and lower sub-region of each region are combined into a common list according to their scores.
+- In the left and right additional regions, the search for the best parallel lines from the top and bottom parts is conducted 
+  according to the steps from section 3.2.5.
+### 3.2.8. Comparing the Quality of Found Pairs of Lines in Additional Regions with the Quality of Line Pairs from the Main Region in These Regions
+- The total score of pairs of lines from the additional regions is compared with the total score in these regions for lines from the main
+  region. If the score of lines from the additional region does not exceed twice the score of lines from the main region, then the lines from the additional
+  region are discarded, and lines from the main region are used instead.
+### 3.2.9. Rotating the Set of Points Located Along the Found Lines to Return Them to the Original Orientation of the Road.
+### 3.2.10. Approximating the Set of Points Located Along the Lines with a Third-Order Polynomial.
+- Points located near the lines in corresponding segments are selected
+- The points are approximated with a third-order polynomial using the least squares metho
 
 ![Screenshot 5.1](images/5.1.png)
 ![Screenshot 5.2](images/5.2.png) 
 ![Screenshot 6](images/6.png) 
-## 4. Идеи для дальнейшего улучшения
-### 4.1. Более тонкая настройка параметров алгоритма
-### 4.2. Вынесение настроечных параметров в файл конфигурации
-- Добавить файл конфигурации с разделами параметров для различных этапов работы алгоритма
-- Считывать в программе файл конфигурации
-### 4.3. Параллелизация
-- Многие элементы алгоритма можно относительно несложно параллелизировать, как из процесса предобработки, так и из процесса поиска линий
+## 4. Ideas for Further Improvement
+### 4.1. Finer Algorithm Parameter Tuning
+### 4.2. Moving Configuration Parameters to a Configuration File
+- Add a configuration file with parameter sections for different stages of the algorithm's operation
+- Read the configuration file in the program
+### 4.3. Parallelization
+- Many elements of the algorithm can be relatively easily parallelized, from the preprocessing process to the line search process
 
 Barashkov A.A., 2024

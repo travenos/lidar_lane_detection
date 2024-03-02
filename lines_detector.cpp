@@ -255,7 +255,7 @@ auto choose_best_lines_pair(const WeightedLinesSet& lines)
     throw std::invalid_argument{"No lines found in the upper part"};
   }
   if (lines[UpDownSegment::Down].empty()) {
-    throw std::invalid_argument{"No lines found in the down part"};
+    throw std::invalid_argument{"No lines found in the lower part"};
   }
   float max_cos{0.};
   const auto* best_up_line = &(lines[UpDownSegment::Up].front());
@@ -500,7 +500,7 @@ PolynomialsVector find_lines(const PointsVector& cloud, const Vec2D& main_direct
   // Find length of the main part
   const float main_part_lenght = cloud_length * MAIN_PART_RELATIVE_SIZE;
   // Find best lines in the main part
-  // segment_id == 0 is upper part, segment_id == 1 is down part
+  // segment_id == 0 is upper part, segment_id == 1 is lower part
   WeightedLinesSet main_part_results;
   std::array<Eigen::MatrixXf, UpDownSegment::Size> main_segment_points;
   for (std::size_t segment_id{0u}; segment_id < UpDownSegment::Size; ++segment_id) {
@@ -509,7 +509,7 @@ PolynomialsVector find_lines(const PointsVector& cloud, const Vec2D& main_direct
     if (segment_id == UpDownSegment::Up) { // upper part
       left_down = Eigen::Vector2f{-main_part_lenght / 2.f, 0.f};
       right_up = Eigen::Vector2f{main_part_lenght / 2.f, MAIN_PART_SEGMENT_WIDTH};
-    } else { // down part
+    } else { // lower part
       left_down = Eigen::Vector2f{-main_part_lenght / 2.f, -MAIN_PART_SEGMENT_WIDTH};
       right_up = Eigen::Vector2f{main_part_lenght / 2.f, 0.f};
     }
