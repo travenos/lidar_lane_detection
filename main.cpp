@@ -118,7 +118,10 @@ int main(int argc, char* argv[])
     for (const auto& [_, point_vector] : points_channels_map) {
       std::copy(point_vector.begin(), point_vector.end(), std::back_inserter(all_points));
     }
-    assert(all_points.size() == plointcloud_size / POINT_SIZE);
+    if (all_points.size() != plointcloud_size / POINT_SIZE) {
+      std::cerr << point_cloud_path << ": unknown error occurred while reading point cloud" << std::endl;
+      continue;
+    }
 
     // Filter out possible marking line points by intensity
     std::vector<PointsVector> possible_marking_line_points;

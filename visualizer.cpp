@@ -41,7 +41,8 @@ void visualize(pcl::visualization::PCLVisualizer& viewer,
 
 float process_intensity(float original_intensity)
 {
-  return std::clamp(original_intensity * 10.f, 0.f, 255.f);
+  const float intensity = std::clamp(original_intensity * 10.f, 0.f, 255.f);
+  return intensity;
 }
 
 pcl::PointXYZI convert_to_pcl(const PlainPointXYZI& input_point)
@@ -85,10 +86,10 @@ auto create_polynomials_representation(const PolynomialsVector& polynomials,
       const auto b = polynomial.coef1;
       const auto c = polynomial.coef2;
       const auto d = polynomial.coef3;
-      float y = a * x_square * x + b * x_square + c * x + d; // Calculate P(x)
+      float y = a * x_square * x + b * x_square + c * x + d;
       x += X_STEP;
       if (square(x) + square(y) < squared_radius) {
-        curve->points.emplace_back(x, y, 0.f); // Add point to the curve
+        curve->points.emplace_back(x, y, 0.f);
       }
     }
     curves.emplace_back(std::move(curve));

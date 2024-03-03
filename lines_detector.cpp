@@ -401,26 +401,6 @@ WeightedLinesPair get_best_segment_pair(const WeightedLinesPair& best_main_pair,
   return best_segment_pair;
 }
 
-Eigen::MatrixXf concatenate_points(const std::initializer_list<const Eigen::MatrixXf*>& point_matrices)
-{
-  Eigen::MatrixXf result;
-  if (point_matrices.size() == 0u) {
-    return result;
-  }
-  int rows{0};
-  for (const auto* point_matrix : point_matrices) {
-    rows += point_matrix->rows();
-  }
-  const auto cols = (*point_matrices.begin())->cols();
-  result.conservativeResize(rows, cols);
-  int start_row{0};
-  for (const auto* point_matrix : point_matrices) {
-    result.block(start_row, 0, point_matrix->rows(), cols) = *point_matrix;
-    start_row += point_matrix->rows();
-  }
-  return result;
-}
-
 Eigen::Vector4f approxymate_points_by_polinomials(const Eigen::MatrixXf& points)
 {
   Eigen::MatrixXf A{points.rows(), 4};
@@ -433,7 +413,7 @@ Eigen::Vector4f approxymate_points_by_polinomials(const Eigen::MatrixXf& points)
     A(i, 3) = 1.f;          // constant
   }
 
-  // Solve the normal equation A^TAx = A^Ty for x using the least squares method
+  // Solve the normal equation A^T * A * x = A^T * y for x using the least squares method
   Eigen::Vector4f coefficients = (A.transpose() * A).ldlt().solve(A.transpose() * points.col(1));
   return coefficients;
 }
@@ -459,7 +439,6 @@ PolynomialsVector find_lines(const PointsVector& cloud, const Vec2D& main_direct
   // Find best lines in the main part
   // segment_id == 0 is upper part, segment_id == 1 is lower part
   WeightedLinesSet main_part_results;
-  std::array<Eigen::MatrixXf, UpDownSegment::Size> main_segment_points;
   for (std::size_t segment_id{0u}; segment_id < UpDownSegment::Size; ++segment_id) {
     Eigen::Vector2f left_down;
     Eigen::Vector2f right_up;
@@ -472,8 +451,6 @@ PolynomialsVector find_lines(const PointsVector& cloud, const Vec2D& main_direct
     }
     auto left_right_segments = get_main_left_right_segments(matrix_cloud, left_down, right_up);
     main_part_results[segment_id] = find_best_lines(left_right_segments).obtain_list();
-    main_segment_points[segment_id] = concatenate_points({&(left_right_segments[LeftRightSegment::Left]),
-                                                          &(left_right_segments[LeftRightSegment::Right])});
   }
   const auto best_main_pair = choose_best_lines_pair(main_part_results);
   std::array<int, UpDownSegment::Size> main_pair_scores{{0, 0}};
@@ -535,6 +512,7 @@ PolynomialsVector find_lines(const PointsVector& cloud, const Vec2D& main_direct
   const auto best_right_segment_pair = get_best_segment_pair(best_main_pair, main_pair_scores, right_segment_results);
 
   PolynomialsVector result{};
+  result.reserve(2u);
   for (std::size_t segment_id{0u}; segment_id < UpDownSegment::Size; ++segment_id) {
     // Approximate lines with polynomial
     const Line left_line{best_left_segment_pair[segment_id].second};
