@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <initializer_list>
-#include <list>
+#include <map>
 #include <vector>
 
 namespace {
@@ -59,60 +59,49 @@ struct Line {
 };
 
 using PointCloudSegments = std::array<Eigen::MatrixXf, LeftRightSegment::Size>;
-using WeightedLinesSet = std::array<std::list<std::pair<int, Eigen::Vector3f>>, UpDownSegment::Size>;
+using WeightedLinesSet = std::array<std::multimap<int, Eigen::Vector3f, std::greater<int>>, UpDownSegment::Size>;
 using WeightedLinesPair = std::array<std::pair<int, Eigen::Vector3f>, UpDownSegment::Size>;
 
-template <typename T>
-class PriorityList final {
+template <typename Key, typename Value, typename Compare>
+class PriorityMap final {
 public:
-  template <typename FCN>
-  PriorityList(std::size_t max_size, FCN&& comparer)
-    : comparer_{std::forward<FCN>(comparer)}
-    , max_size_{max_size}
+  explicit PriorityMap(std::size_t max_size)
+    : max_size_{max_size}
   {
   }
 
-  const std::list<T>& get_list() const { return data_; }
+  const std::multimap<Key, Value, Compare>& get_map() const { return data_; }
 
-  std::list<T> obtain_list() { return std::move(data_); }
+  std::multimap<Key, Value, Compare> obtain_map() { return std::move(data_); }
 
-  template <typename U>
-  bool push(U&& element)
+  template <typename K, typename V>
+  bool push(K&& key, V&& value)
   {
     bool inserted{false};
-    for (auto iter = data_.begin(); iter != data_.end(); ++iter) {
-      // If the new element is greater or equal to the element under iterator
-      if (comparer_(*iter, element)) {
-        data_.insert(iter, std::forward<U>(element));
-        inserted = true;
-        break;
-      }
-    }
-    if (!inserted && data_.size() < max_size_) {
-      data_.push_back(std::forward<U>(element));
-    }
-    if (data_.size() > max_size_) {
-      data_.pop_back();
+    auto iter = data_.lower_bound(key);
+    if (data_.size() < max_size_) {
+      data_.emplace_hint(iter, std::forward<K>(key), std::forward<V>(value));
+      inserted = true;
+    } else if (iter != data_.end()) {
+      auto last_element = std::prev(data_.end());
+      last_element->second = std::forward<V>(value);
+      auto node = data_.extract(last_element);
+      node.key() = std::forward<K>(key);
+      data_.insert(std::move(node));
+      inserted = true;
     }
     return inserted;
   }
 
-  template <typename... Args>
-  bool emplace(Args&&... args)
+  void merge(const PriorityMap<Key, Value, Compare>& other)
   {
-    return push(T{std::forward<Args>(args)...});
-  }
-
-  void merge(const PriorityList<T>& other)
-  {
-    for (const auto& other_element : other.get_list()) {
-      push(other_element);
+    for (const auto& other_element : other.get_map()) {
+      push(other_element.first, other_element.second);
     }
   }
 
 private:
-  std::list<T> data_;
-  std::function<bool(const T&, const T&)> comparer_;
+  std::multimap<Key, Value, Compare> data_;
   std::size_t max_size_;
 };
 
@@ -217,11 +206,7 @@ int score_line(const Eigen::Vector3f& line, const PointCloudSegments& point_clou
 
 auto find_best_lines(const PointCloudSegments& point_cloud_segments)
 {
-  using StoredElement = std::pair<int, Eigen::Vector3f>;
-  auto score_comparer = [](const StoredElement& first_val, const StoredElement& second_val) {
-    return first_val.first < second_val.first;
-  };
-  PriorityList<StoredElement> result{MAX_BEST_ELEMENTS_COUNT, score_comparer};
+  PriorityMap<int, Eigen::Vector3f, std::greater<int>> result{MAX_BEST_ELEMENTS_COUNT};
 
   const auto& right_part = point_cloud_segments[LeftRightSegment::Right];
   const auto& left_part = point_cloud_segments[LeftRightSegment::Left];
@@ -237,7 +222,7 @@ auto find_best_lines(const PointCloudSegments& point_cloud_segments)
         const float dist_from_origin = get_dist(Eigen::Vector2f::Zero(), line);
         if (dist_from_origin > MIN_DIST_FROM_ORIGIN && dist_from_origin < MAX_DIST_FROM_ORIGIN) {
           const int line_score = score_line(line, point_cloud_segments);
-          result.emplace(line_score, line);
+          result.push(line_score, line);
         }
       }
     }
@@ -250,7 +235,7 @@ bool are_lines_distant(const Eigen::Vector3f& line1, const Eigen::Vector3f& line
   return std::fabs(-line1(2) / line1(1) - (-line2(2) / line2(1))) >= MIN_DIST_FROM_ORIGIN;
 }
 
-auto choose_best_lines_pair(const WeightedLinesSet& lines)
+WeightedLinesPair choose_best_lines_pair(const WeightedLinesSet& lines)
 {
   if (lines[UpDownSegment::Up].empty()) {
     throw std::invalid_argument{"No lines found in the upper part"};
@@ -259,8 +244,8 @@ auto choose_best_lines_pair(const WeightedLinesSet& lines)
     throw std::invalid_argument{"No lines found in the lower part"};
   }
   float max_cos{0.};
-  const auto* best_up_line = &(lines[UpDownSegment::Up].front());
-  const auto* best_down_line = &(lines[UpDownSegment::Down].front());
+  const auto* best_up_line = &(*lines[UpDownSegment::Up].begin());
+  const auto* best_down_line = &(*lines[UpDownSegment::Down].begin());
   for (const auto& scored_up_line: lines[UpDownSegment::Up]) {
     for (const auto& scored_down_line: lines[UpDownSegment::Down]) {
       const auto& up_line = scored_up_line.second;
@@ -283,7 +268,7 @@ auto choose_best_lines_pair(const WeightedLinesSet& lines)
       }
     }
   }
-  return std::array{*best_up_line, *best_down_line};
+  return WeightedLinesPair{*best_up_line, *best_down_line};
 }
 
 Line get_segment_line(const Line& main_line, float x_start, float line_angle)
@@ -348,11 +333,7 @@ template <typename Comp>
 auto find_best_lines_in_segment(const PointCloudSegments& point_cloud_segments,
                                 const Eigen::Vector3f& main_line, float x_middle, Comp comparer)
 {
-  using StoredElement = std::pair<int, Eigen::Vector3f>;
-  auto score_comparer = [](const StoredElement& first_val, const StoredElement& second_val) {
-    return first_val.first < second_val.first;
-  };
-  PriorityList<StoredElement> result{MAX_BEST_ELEMENTS_COUNT, score_comparer};
+  PriorityMap<int, Eigen::Vector3f, std::greater<int>> result{MAX_BEST_ELEMENTS_COUNT};
 
   const auto& right_part = point_cloud_segments[LeftRightSegment::Right];
   const auto& left_part = point_cloud_segments[LeftRightSegment::Left];
@@ -369,7 +350,7 @@ auto find_best_lines_in_segment(const PointCloudSegments& point_cloud_segments,
           && !comparer(-x_middle, intersection_with_main_x)
           && angle_is_near(main_line, line)) {
         const int line_score = score_line(line, point_cloud_segments);
-        result.emplace(line_score, line);
+        result.push(line_score, line);
       }
     }
   }
@@ -450,7 +431,7 @@ PolynomialsVector find_lines(const PointsVector& cloud, const Vec2D& main_direct
       right_up = Eigen::Vector2f{main_part_lenght / 2.f, 0.f};
     }
     auto left_right_segments = get_main_left_right_segments(matrix_cloud, left_down, right_up);
-    main_part_results[segment_id] = find_best_lines(left_right_segments).obtain_list();
+    main_part_results[segment_id] = find_best_lines(left_right_segments).obtain_map();
   }
   const auto best_main_pair = choose_best_lines_pair(main_part_results);
   std::array<int, UpDownSegment::Size> main_pair_scores{{0, 0}};
@@ -479,7 +460,7 @@ PolynomialsVector find_lines(const PointsVector& cloud, const Vec2D& main_direct
                                                             std::less<float>{});
     best_lines.merge(find_best_lines_in_segment(down_segments, main_line_coefs, segment_x_middle, std::less<float>{}));
     main_pair_scores[segment_id] = score_line(main_line_coefs, up_segments) + score_line(main_line_coefs, down_segments);
-    left_segment_results[segment_id] = best_lines.obtain_list();
+    left_segment_results[segment_id] = best_lines.obtain_map();
   }
   const auto best_left_segment_pair = get_best_segment_pair(best_main_pair, main_pair_scores, left_segment_results);
 
@@ -507,7 +488,7 @@ PolynomialsVector find_lines(const PointsVector& cloud, const Vec2D& main_direct
                                                             std::greater<float>{});
     best_lines.merge(find_best_lines_in_segment(down_segments, main_line_coefs, segment_x_middle, std::greater<float>{}));
     main_pair_scores[segment_id] = score_line(main_line_coefs, up_segments) + score_line(main_line_coefs, down_segments);
-    right_segment_results[segment_id] = best_lines.obtain_list();
+    right_segment_results[segment_id] = best_lines.obtain_map();
   }
   const auto best_right_segment_pair = get_best_segment_pair(best_main_pair, main_pair_scores, right_segment_results);
 
