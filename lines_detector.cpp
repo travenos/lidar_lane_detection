@@ -78,16 +78,16 @@ public:
   bool push(K&& key, V&& value)
   {
     bool inserted{false};
-    auto iter = data_.lower_bound(key);
+    auto iter = data_.upper_bound(key);
     if (data_.size() < max_size_) {
       data_.emplace_hint(iter, std::forward<K>(key), std::forward<V>(value));
       inserted = true;
     } else if (iter != data_.end()) {
       auto last_element = std::prev(data_.end());
-      last_element->second = std::forward<V>(value);
       auto node = data_.extract(last_element);
       node.key() = std::forward<K>(key);
-      data_.insert(std::move(node));
+      auto updated_iter = data_.insert(std::move(node));
+      updated_iter->second = std::forward<V>(value);
       inserted = true;
     }
     return inserted;
