@@ -73,7 +73,7 @@ Line construction is carried out in the upper and lower segments of the point cl
 In this case, the lower segment refers to a set of points below the central line (one edge of the lane),
 and the upper segment refers to a set of points above it (the other edge of the lane). 
 
-![Scheme 1](images/Regions for lines detection.png) 
+![Scheme 1](images/regions_for_lines_detection.png) 
 
 For simplification of calculations at this stage, it is assumed that all points are approximately in the plane and the height is zero.
 
@@ -138,7 +138,7 @@ For simplification of calculations at this stage, it is assumed that all points 
 ### 4.2. Moving Configuration Parameters to a Configuration File
 - Add a configuration file with parameter sections for different stages of the algorithm's operation
 - Read the configuration file in the program
-- 
+
 ### 4.3. Parallelization
 - Many elements of the algorithm can be relatively easily parallelized, from the preprocessing process to the line search process
 
